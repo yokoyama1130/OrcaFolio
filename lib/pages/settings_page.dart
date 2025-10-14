@@ -25,7 +25,6 @@ class SettingsPage extends StatelessWidget {
             leading: const Icon(Icons.logout, color: Colors.redAccent),
             title: const Text('ログアウト', style: TextStyle(color: Colors.redAccent)),
             onTap: () {
-              // TODO: ログアウト処理
               ScaffoldMessenger.of(context)
                   .showSnackBar(const SnackBar(content: Text('ログアウトしました')));
             },

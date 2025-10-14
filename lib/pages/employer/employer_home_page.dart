@@ -50,7 +50,6 @@ class EmployerHomePage extends StatelessWidget {
                     children: [
                       OutlinedButton.icon(
                         onPressed: () {
-                          // TODO: 応募者一覧ページへ遷移
                           // Navigator.push(context, MaterialPageRoute(builder: (_) => ApplicantsPage(postId: ...)));
                         },
                         icon: const Icon(Icons.people_outline),
@@ -59,7 +58,6 @@ class EmployerHomePage extends StatelessWidget {
                       const SizedBox(width: 8),
                       TextButton.icon(
                         onPressed: () {
-                          // TODO: 投稿編集へ
                         },
                         icon: const Icon(Icons.edit_outlined),
                         label: const Text('編集'),

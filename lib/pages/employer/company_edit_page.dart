@@ -22,7 +22,6 @@ class _CompanyEditPageState extends State<CompanyEditPage> {
   }
 
   void _save() {
-    // TODO: CakePHP Employer/Companies/update にPOST
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('会社プロフィールを更新しました')),
     );

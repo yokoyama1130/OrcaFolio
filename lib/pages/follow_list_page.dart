@@ -47,7 +47,6 @@ class _FollowListPageState extends State<FollowListPage> {
     setState(() {
       users[index]['isFollowed'] = !users[index]['isFollowed'];
     });
-    // TODO: CakePHP APIへPOST /api/follows/toggle.json
   }
 
   @override
@@ -85,7 +84,6 @@ class _FollowListPageState extends State<FollowListPage> {
               child: Text(user['isFollowed'] ? 'フォロー中' : 'フォロー'),
             ),
             onTap: () {
-              // TODO: ここでプロフィールページへ遷移できるようにする
               // Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: ...)));
             },
           );

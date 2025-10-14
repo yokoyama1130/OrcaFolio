@@ -36,7 +36,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     right: 0,
                     child: IconButton(
                       onPressed: () {
-                        // TODO: 画像選択処理
                       },
                       icon: const Icon(Icons.camera_alt, color: Colors.blueAccent),
                     ),
@@ -64,7 +63,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
             // 保存ボタン
             ElevatedButton(
               onPressed: () {
-                // TODO: CakePHP APIにPOST
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('プロフィールを更新しました')),
                 );

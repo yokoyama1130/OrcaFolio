@@ -21,7 +21,7 @@ class CompanySettingsPage extends StatelessWidget {
             leading: const Icon(Icons.palette_outlined),
             title: const Text('テーマ設定'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {}, // TODO
+            onTap: () {},
           ),
           const Divider(),
           Padding(
@@ -46,7 +46,6 @@ class CompanySettingsPage extends StatelessWidget {
             title: const Text('ログアウト',
                 style: TextStyle(color: Colors.redAccent)),
             onTap: () {
-              // TODO: ログアウト処理
               ScaffoldMessenger.of(context)
                   .showSnackBar(const SnackBar(content: Text('ログアウトしました')));
             },

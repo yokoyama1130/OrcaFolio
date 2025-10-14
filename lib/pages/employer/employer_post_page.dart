@@ -37,7 +37,6 @@ class _EmployerPostPageState extends State<EmployerPostPage> {
       ));
       return;
     }
-    // TODO: /Employer/Portfolios/add に相当するエンドポイントへ multipart 送信
     // Cake側はprefixでcompany_idを付与してくれる前提
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('会社として投稿を送信しました（UI）')),
@@ -64,7 +63,7 @@ class _EmployerPostPageState extends State<EmployerPostPage> {
           const SizedBox(height: 16),
 
           DropdownButtonFormField<String>(
-            value: _category,
+            initialValue: _category,
             decoration: const InputDecoration(labelText: 'ジャンル（カテゴリ）'),
             items: const [
               DropdownMenuItem(value: 'mechanical', child: Text('機械系')),

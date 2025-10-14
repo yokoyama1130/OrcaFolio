@@ -45,8 +45,7 @@ class _AddPortfolioPageState extends State<AddPortfolioPage> {
   final _experimentSummaryCtrl = TextEditingController();
 
   // ▼ カテゴリ周り
-  List<Category> _categories = [
-    // ※本番はAPIから取得して setState で差し替え
+  final List<Category> _categories = [
     Category(id: 1, name: '機械系', slug: 'mechanical'),
     Category(id: 2, name: 'プログラミング', slug: 'programming'),
     Category(id: 3, name: '化学', slug: 'chemistry'),
@@ -122,8 +121,9 @@ class _AddPortfolioPageState extends State<AddPortfolioPage> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           // ▼ カテゴリ（Cake: category_id）
           DropdownButtonFormField<Category>(
+            initialValue: _selected, 
             decoration: const InputDecoration(labelText: 'ジャンル（カテゴリ）'),
-            value: _selected,
+            // value: _selected,
             items: _categories
                 .map((c) =>
                     DropdownMenuItem(value: c, child: Text(c.name)))

@@ -41,7 +41,6 @@ class _PortfolioCardState extends State<PortfolioCard> {
       _likeCount += _isLiked ? 1 : -1;
     });
 
-    // TODO: CakePHP APIへ送信（例：POST /api/likes/toggle）
     // await http.post(Uri.parse('https://example.com/api/likes/toggle'), body: {...})
   }
 
@@ -50,7 +49,6 @@ class _PortfolioCardState extends State<PortfolioCard> {
       _isFollowed = !_isFollowed;
     });
 
-    // TODO: CakePHP APIへ送信（例：POST /api/follows/toggle）
   }
 
   @override

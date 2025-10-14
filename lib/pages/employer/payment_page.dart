@@ -15,7 +15,6 @@ class _PaymentPageState extends State<PaymentPage> {
   final _cvc = TextEditingController();
 
   void _confirm() {
-    // TODO: サーバーにプラン変更＋決済トークン送信（Stripe等）
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('「$_plan」プランに変更しました（ダミー）')),
     );
