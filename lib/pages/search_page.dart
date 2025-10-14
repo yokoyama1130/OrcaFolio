@@ -100,6 +100,8 @@ class _SearchPageState extends State<SearchPage> {
                         title: p['title'],
                         imageUrl: p['imageUrl'],
                         likes: p['likes'],
+                        initiallyLiked: false,      // 初期状態（将来APIから取得）
+                        initiallyFollowed: false, 
                       );
                     },
                   ),
