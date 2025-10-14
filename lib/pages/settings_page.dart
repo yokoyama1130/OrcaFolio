@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'employer/employer_shell.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -28,6 +29,17 @@ class SettingsPage extends StatelessWidget {
               ScaffoldMessenger.of(context)
                   .showSnackBar(const SnackBar(content: Text('ログアウトしました')));
             },
+          ),
+          // どこかの画面（例: SettingsPage など）
+          TextButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const EmployerShell()),
+              );
+            },
+            icon: const Icon(Icons.business_outlined),
+            label: const Text('企業モードへ'),
           ),
         ],
       ),
