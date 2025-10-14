@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/portfolio_card.dart';
+import 'settings_page.dart';
+import 'edit_profile_page.dart';
 import 'follow_list_page.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -7,22 +9,43 @@ class ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 将来的にCakePHP APIから取得予定
     const int followingCount = 128;
     const int followerCount = 212;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My Profile')),
+      appBar: AppBar(
+        title: const Text('My Profile'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: '設定',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsPage()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'プロフィール編集',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const EditProfilePage()),
+              );
+            },
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // --- プロフィール上部 ---
           const CircleAvatar(
             radius: 50,
             backgroundImage: NetworkImage('https://picsum.photos/200'),
           ),
           const SizedBox(height: 12),
-
           const Text(
             'yokoyama1130',
             textAlign: TextAlign.center,
@@ -35,7 +58,7 @@ class ProfilePage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // --- フォロー／フォロワー数 ---
+          // フォロー・フォロワー
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -59,8 +82,6 @@ class ProfilePage extends StatelessWidget {
             ],
           ),
           const Divider(height: 32),
-
-          // --- ポートフォリオ一覧 ---
           const Text('My Portfolios',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
@@ -79,7 +100,6 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  /// 👥 フォロー/フォロワー共通パーツ
   Widget _buildFollowStat(String label, int count, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
