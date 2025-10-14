@@ -5,6 +5,7 @@ import 'pages/add_portfolio_page.dart';
 import 'pages/portfolio_detail_page.dart';
 import 'pages/dm_list_page.dart';
 import 'pages/search_page.dart';
+import 'pages/follow_list_page.dart';
 
 void main() {
   runApp(const CalcraftApp());
@@ -43,6 +44,7 @@ class _CalcraftAppState extends State<CalcraftApp> {
       // ✅ ルート設定を追加
       routes: {
         '/detail': (context) => const PortfolioDetailPage(),
+        '/followList': (context) => const FollowListPage(type: 'following'),
       },
       home: Scaffold(
         body: _pages[_selectedIndex],
