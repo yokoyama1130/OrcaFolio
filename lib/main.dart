@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'pages/home_page.dart';
 import 'pages/profile_page.dart';
 import 'pages/add_portfolio_page.dart';
+import 'pages/portfolio_detail_page.dart'; // ← 追加！
 
 void main() {
   runApp(const CalcraftApp());
@@ -35,6 +36,10 @@ class _CalcraftAppState extends State<CalcraftApp> {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
         useMaterial3: true,
       ),
+      // ✅ ルート設定を追加
+      routes: {
+        '/detail': (context) => const PortfolioDetailPage(),
+      },
       home: Scaffold(
         body: _pages[_selectedIndex],
         bottomNavigationBar: NavigationBar(

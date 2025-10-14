@@ -22,7 +22,16 @@ class PortfolioCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () {
-          Navigator.pushNamed(context, '/detail');
+          Navigator.pushNamed(
+            context,
+            '/detail',
+            arguments: {
+              'username': username,
+              'title': title,
+              'imageUrl': imageUrl,
+              'likes': likes,
+            },
+          );
         },
         borderRadius: BorderRadius.circular(12),
         child: Column(
