@@ -64,7 +64,7 @@ class _ChatPageState extends State<ChatPage> {
                         maxWidth: MediaQuery.of(context).size.width * 0.75),
                     decoration: BoxDecoration(
                       color: msg['fromMe']
-                          ? Colors.blueAccent.withOpacity(0.9)
+                          ? Colors.blueAccent.withValues(alpha: 0.9)
                           : Colors.grey.shade200,
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(12),
