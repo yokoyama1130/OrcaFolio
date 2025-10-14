@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'company_edit_page.dart';
+import 'company_settings_page.dart';
 
 class CompanyProfilePage extends StatelessWidget {
   const CompanyProfilePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // 将来的にAPIで動的取得
+    // 将来はAPIから取得
     const companyName = 'Calcraft Robotics Inc.';
     const followers = 1024;
     const posts = 12;
@@ -13,7 +15,31 @@ class CompanyProfilePage extends StatelessWidget {
         '産業ロボットとエンジニア採用をつなぐプラットフォーム開発。\n機械設計・組込・画像処理の実績あり。';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Company Profile')),
+      appBar: AppBar(
+        title: const Text('Company Profile'),
+        actions: [
+          IconButton(
+            tooltip: '設定',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CompanySettingsPage()),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'プロフィール編集',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CompanyEditPage()),
+              );
+            },
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -22,8 +48,11 @@ class CompanyProfilePage extends StatelessWidget {
             backgroundImage: NetworkImage('https://picsum.photos/200?company'),
           ),
           const SizedBox(height: 12),
-          Text(companyName, textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(
+            companyName,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
           Text(about, textAlign: TextAlign.center),
           const SizedBox(height: 16),
@@ -36,7 +65,8 @@ class CompanyProfilePage extends StatelessWidget {
             ],
           ),
           const Divider(height: 32),
-          const Text('会社からのお知らせ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text('会社からのお知らせ',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           const ListTile(
             dense: true,
@@ -51,7 +81,9 @@ class CompanyProfilePage extends StatelessWidget {
 
   Widget _stat(String label, int count) => Column(
         children: [
-          Text('$count', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text('$count',
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           Text(label, style: const TextStyle(color: Colors.grey)),
         ],
       );
