@@ -3,12 +3,73 @@ import '../widgets/portfolio_card.dart';
 import 'settings_page.dart';
 import 'edit_profile_page.dart';
 import 'follow_list_page.dart';
+import 'login_page.dart';
+import 'signup_page.dart';
 
 class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key});
+  const ProfilePage({super.key, this.isLoggedIn = false});
+
+  /// 認証状態（実運用ではAuthProvider等から取得）
+  final bool isLoggedIn;
 
   @override
   Widget build(BuildContext context) {
+    return isLoggedIn ? _buildLoggedIn(context) : _buildLoggedOut(context);
+  }
+
+  // ------------------ 未ログインUI ------------------
+  Widget _buildLoggedOut(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('My Profile')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock_outline, size: 64, color: Colors.grey),
+              const SizedBox(height: 12),
+              const Text(
+                'プロフィールを表示するにはログインしてください。',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LoginPage()),
+                    );
+                  },
+                  icon: const Icon(Icons.login),
+                  label: const Text('ログイン'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SignUpPage()),
+                    );
+                  },
+                  icon: const Icon(Icons.person_add_alt_1),
+                  label: const Text('新規登録'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ------------------ ログイン済みUI ------------------
+  Widget _buildLoggedIn(BuildContext context) {
     const int followingCount = 128;
     const int followerCount = 212;
 
@@ -112,10 +173,7 @@ class ProfilePage extends StatelessWidget {
               '$count',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
-            ),
+            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
           ],
         ),
       ),
