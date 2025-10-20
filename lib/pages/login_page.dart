@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../data/api_client.dart';
 import 'profile_page.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.apiBaseUrl = 'http://localhost:8765'});
+  final String apiBaseUrl;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -11,17 +14,36 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _storage = const FlutterSecureStorage();
   bool _loading = false;
 
   Future<void> _login() async {
+    FocusScope.of(context).unfocus();
     setState(() => _loading = true);
-    await Future.delayed(const Duration(milliseconds: 800)); // ダミー
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const ProfilePage(isLoggedIn: true)),
-      (_) => false,
-    );
+    try {
+      final api = ApiClient(baseUrl: widget.apiBaseUrl);
+      final res = await api.login(_email.text.trim(), _password.text); // ← サーバからJWT取得
+      await _storage.write(key: 'jwt', value: res.token);              // ← 保存
+
+      if (!mounted) return;
+      // Profileへトークンを渡して遷移（Unauthorized回避に必須）
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProfilePage(
+            isLoggedIn: true,
+            apiBaseUrl: widget.apiBaseUrl,
+            token: res.token,
+          ),
+        ),
+        (_) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
