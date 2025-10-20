@@ -1,7 +1,8 @@
 // lib/data/api_client.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'models.dart'; // ← バレル（profile_user / portfolio_item / profile_response を全てexport）
+import 'package:image_picker/image_picker.dart'; // ← 画像選択の XFile 用
+import 'models.dart'; // ← バレル（profile_user / portfolio_item / profile_response を全て export）
 
 class LoginResult {
   final String token;
@@ -29,8 +30,6 @@ class ApiClient {
     if (withAuth && token != null && token!.isNotEmpty) {
       h['Authorization'] = 'Bearer $token';
     }
-    // デバッグ：邪魔なら消してOK
-    // print('[ApiClient] headers=$h');
     return h;
   }
 
@@ -47,8 +46,6 @@ class ApiClient {
           body: jsonEncode({'email': email, 'password': password}),
         )
         .timeout(const Duration(seconds: 20));
-
-    // print('[ApiClient] POST $uri -> ${res.statusCode} ${res.body}');
 
     if (res.statusCode == 200) {
       final m = json.decode(res.body) as Map<String, dynamic>;
@@ -69,7 +66,7 @@ class ApiClient {
   }
 
   // ---------------------------
-  // Profile
+  // Profile: fetch
   // ---------------------------
 
   /// 自分のプロフィール（要JWT）
@@ -79,14 +76,11 @@ class ApiClient {
         .get(uri, headers: _headers())
         .timeout(const Duration(seconds: 20));
 
-    // print('[ApiClient] GET $uri -> ${res.statusCode}');
-
     if (res.statusCode == 200) {
       final body = json.decode(res.body) as Map<String, dynamic>;
       return ProfileResponse.fromJson(body);
     }
 
-    // エラーメッセージを整形
     String msg = 'Failed: ${res.statusCode}';
     try {
       final m = json.decode(res.body) as Map<String, dynamic>;
@@ -105,8 +99,6 @@ class ApiClient {
         .get(uri, headers: _headers(withAuth: false)) // 公開なので Authorization なしでOK
         .timeout(const Duration(seconds: 20));
 
-    // print('[ApiClient] GET $uri -> ${res.statusCode}');
-
     if (res.statusCode == 200) {
       final body = json.decode(res.body) as Map<String, dynamic>;
       return ProfileResponse.fromJson(body);
@@ -118,5 +110,63 @@ class ApiClient {
       if (m['message'] != null) msg = m['message'].toString();
     } catch (_) {}
     throw Exception(msg);
+  }
+
+  // ---------------------------
+  // Profile: update (name / bio / icon)
+  // ---------------------------
+
+  /// プロフィール更新（いずれも任意：指定されたものだけ更新）
+  /// サーバ側は POST /api/users/update.json を想定。
+  /// フィールド:
+  /// - name: string
+  /// - bio: string
+  /// - icon: file (multipart)
+  Future<ProfileUser> updateProfile({
+    String? name,
+    String? bio,
+    XFile? icon, // image_picker の XFile
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/users/update.json');
+
+    // MultipartRequest を使うので Content-Type はここでは付けない
+    final req = http.MultipartRequest('POST', uri);
+    if (token != null && token!.isNotEmpty) {
+      req.headers['Authorization'] = 'Bearer $token';
+    }
+
+    if (name != null) req.fields['name'] = name;
+    if (bio != null) req.fields['bio'] = bio;
+
+    if (icon != null) {
+      req.files.add(
+        await http.MultipartFile.fromPath(
+          'icon',           // ← サーバー側も 'icon' で受け取る実装にしてある
+          icon.path,
+          filename: icon.name,
+          // contentType は省略でOK（サーバで受けられます）
+        ),
+      );
+    }
+
+    final streamed = await req.send().timeout(const Duration(seconds: 30));
+    final res = await http.Response.fromStream(streamed);
+
+    if (res.statusCode == 200) {
+      final map = json.decode(res.body) as Map<String, dynamic>;
+      if (map['success'] == true && map['user'] is Map) {
+        return ProfileUser.fromJson(map['user'] as Map<String, dynamic>);
+      }
+      throw Exception(map['message']?.toString() ?? '更新に失敗しました');
+    } else if (res.statusCode == 401) {
+      throw Exception('Unauthorized');
+    } else {
+      String msg = 'Failed: ${res.statusCode}';
+      try {
+        final m = json.decode(res.body) as Map<String, dynamic>;
+        if (m['message'] != null) msg = m['message'].toString();
+      } catch (_) {}
+      throw Exception(msg);
+    }
   }
 }

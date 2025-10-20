@@ -291,11 +291,26 @@ class _ProfilePageState extends State<ProfilePage> {
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'プロフィール編集',
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              // 現在表示している値を編集画面へ渡す
+              final updated = await Navigator.push<ProfileUser?>(
                 context,
-                MaterialPageRoute(builder: (_) => const EditProfilePage()),
+                MaterialPageRoute(
+                  builder: (_) => EditProfilePage(
+                    apiBaseUrl: widget.apiBaseUrl,
+                    token: _token,                // ← JWT を渡す（編集API用）
+                    initialName: user.name,       // ← 現在のユーザー名を渡す
+                    initialBio: user.bio,         // ← 現在の自己紹介を渡す
+                    initialIconUrl: user.iconUrl, // ← 現在のアイコンURLを渡す
+                  ),
+                ),
               );
+              // 戻り値があれば即時に反映しつつ、サーバー値とも整合させたいなら再読込
+              if (updated != null) {
+                // 軽く即時反映したい場合はここで setState して見た目だけ更新してもOK
+                // ただし一貫性重視ならサーバー値を再取得する
+                await _reload();
+              }
             },
           ),
         ],
