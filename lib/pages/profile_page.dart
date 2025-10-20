@@ -1,21 +1,24 @@
+// lib/pages/profile_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import '../widgets/portfolio_card.dart';
 import 'settings_page.dart';
 import 'edit_profile_page.dart';
 import 'follow_list_page.dart';
 import 'login_page.dart';
 import 'signup_page.dart';
+
 import '../data/api_client.dart';
-import '../data/models.dart';
+import '../data/models.dart'; // ProfileResponse / ProfileUser / PortfolioItem
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({
     super.key,
     this.isLoggedIn = false,
     this.apiBaseUrl = 'http://localhost:8765', // 実機は http://<MacのIP>:8765
-    this.token,
-    this.viewUserId,
+    this.token,            // 親から明示的に渡す場合
+    this.viewUserId,       // 他人のプロフィールを閲覧するとき
   });
 
   final bool isLoggedIn;
@@ -30,9 +33,9 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   static const _storage = FlutterSecureStorage();
 
-  String? _token;                     // 実際に使うトークン（引数 or 保存済み）
-  late ApiClient _api;                // _token が決まってから初期化
-  Future<ProfileResponse>? _future;   // API呼び出し
+  String? _token;                   // 実際に使うJWT（引数 or 保存）
+  late ApiClient _api;              // _tokenが決まったら初期化
+  Future<ProfileResponse>? _future; // API呼び出しFuture
 
   @override
   void initState() {
@@ -40,22 +43,27 @@ class _ProfilePageState extends State<ProfilePage> {
     _bootstrap();
   }
 
-  /// 起動時に token を用意して Future を仕込む
+  /// 起動時：tokenを用意して、必要ならロードを仕込む
   Future<void> _bootstrap() async {
-    // 1) トークン準備（非同期は setState の外で）
-    var t = widget.token ?? await const FlutterSecureStorage().read(key: 'jwt');
+    // 1) token 準備（引数優先 → secure storage）
+    final t = widget.token ?? await _storage.read(key: 'jwt');
     _token = t;
     _api = ApiClient(baseUrl: widget.apiBaseUrl, token: _token);
 
-    // 2) Future をセット（await しない）
-    if (widget.isLoggedIn || widget.viewUserId != null) {
-      _future = _load(); // ← ここは代入だけ（同期）
+    // 2) 読み込み条件：
+    //    - 自分のプロフィール: token がある もしくは isLoggedIn == true
+    //    - 他人のプロフィール: viewUserId がある（token不要）
+    final shouldLoad =
+        (_token != null && _token!.isNotEmpty) || widget.isLoggedIn || widget.viewUserId != null;
+
+    if (shouldLoad) {
+      _future = _load(); // await しない（FutureBuilder に渡す用）
       if (!mounted) return;
-      setState(() {});   // ← 再描画のトリガーだけを同期で実行
+      setState(() {});   // 再描画だけ同期で
     }
   }
 
-
+  /// プロフィール取得（自分 or 他人）
   Future<ProfileResponse> _load() {
     if (widget.viewUserId != null) {
       return _api.fetchPublicProfile(widget.viewUserId!);
@@ -64,34 +72,41 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  /// Pull-to-Refresh
   Future<void> _reload() async {
     setState(() {
       _future = _load();
     });
     try {
       await _future;
-    } catch (_) {}
+    } catch (_) {
+      // 例外表示はビルド内のエラーハンドリングに任せる
+    }
     if (!mounted) return;
   }
 
   @override
   Widget build(BuildContext context) {
-    // _bootstrap 完了前（_future 未設定）はローディング
-    if (_future == null && (widget.isLoggedIn || widget.viewUserId != null)) {
+    // “ログイン扱い”の判定：tokenがある or isLoggedIn or viewUserIdがある
+    final logged = (_token != null && _token!.isNotEmpty) || widget.isLoggedIn || widget.viewUserId != null;
+
+    // _bootstrap完了前（shouldLoad=true だが _future まだ）のローダー
+    if (_future == null && logged) {
       return Scaffold(
         appBar: AppBar(title: const Text('My Profile')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
-    // 自分のプロフィールを開くのに未ログイン、かつ他人ID指定もない場合は未ログインUI
-    if (!(widget.isLoggedIn || widget.viewUserId != null)) {
+    // 自分のプロフィールで token も isLoggedIn も false、かつ viewUserId も無い → 未ログインUI
+    if (!logged) {
       return _buildLoggedOut(context);
     }
 
     return FutureBuilder<ProfileResponse>(
       future: _future,
       builder: (context, snap) {
+        // ローディング
         if (snap.connectionState == ConnectionState.waiting) {
           return Scaffold(
             appBar: AppBar(title: const Text('My Profile')),
@@ -99,9 +114,10 @@ class _ProfilePageState extends State<ProfilePage> {
           );
         }
 
+        // エラー
         if (snap.hasError) {
-          // ← ここを「token の有無」ではなく、_token の有無で判定
-          final looksUnauthorized = (_token == null || (_token?.isEmpty ?? true));
+          final looksUnauthorized =
+              (_token == null || (_token?.isEmpty ?? true)) && widget.viewUserId == null;
           return Scaffold(
             appBar: AppBar(title: const Text('My Profile')),
             body: Padding(
@@ -127,11 +143,12 @@ class _ProfilePageState extends State<ProfilePage> {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: () async {
-                          // ログインへ遷移（成功時に token を返すようにしておく）
+                          // LoginPageは token を返して閉じる（Navigator.pop(token)）
                           final token = await Navigator.push<String?>(
                             context,
                             MaterialPageRoute(builder: (_) => const LoginPage()),
                           );
+                          if (!mounted) return;
                           if (token != null && token.isNotEmpty) {
                             await _storage.write(key: 'jwt', value: token);
                             setState(() {
@@ -151,6 +168,7 @@ class _ProfilePageState extends State<ProfilePage> {
           );
         }
 
+        // データなし（稀）→ フォールバック
         if (!snap.hasData) {
           return Scaffold(
             appBar: AppBar(title: const Text('My Profile')),
@@ -194,8 +212,20 @@ class _ProfilePageState extends State<ProfilePage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginPage()));
+                  onPressed: () async {
+                    final token = await Navigator.push<String?>(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LoginPage()),
+                    );
+                    if (!mounted) return;
+                    if (token != null && token.isNotEmpty) {
+                      await _storage.write(key: 'jwt', value: token);
+                      setState(() {
+                        _token = token;
+                        _api = ApiClient(baseUrl: widget.apiBaseUrl, token: _token);
+                        _future = _load();
+                      });
+                    }
                   },
                   icon: const Icon(Icons.login),
                   label: const Text('ログイン'),
@@ -229,15 +259,44 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         title: Text(user.name.isEmpty ? 'Profile' : user.name),
         actions: [
+          // ✅ 設定 → await で戻り値を受け取り、logout を反映
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: '設定',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
+            onPressed: () async {
+              // ← await の前にキャプチャ
+              final messenger = ScaffoldMessenger.of(context);
+
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsPage()),
+              );
+
+              if (!mounted) return;
+              if (result == 'logged_out') {
+                await _storage.delete(key: 'jwt');
+                setState(() {
+                  _token = null;
+                  _api   = ApiClient(baseUrl: widget.apiBaseUrl, token: _token);
+                  _future = null;
+                });
+
+                // ← context を使わず、事前にキャプチャした messenger を使う
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('ログアウトしました')),
+                );
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'プロフィール編集',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfilePage())),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const EditProfilePage()),
+              );
+            },
           ),
         ],
       ),
@@ -263,15 +322,22 @@ class _ProfilePageState extends State<ProfilePage> {
             if (user.bio.isNotEmpty) Text(user.bio, textAlign: TextAlign.center),
             const SizedBox(height: 16),
 
+            // フォロー・フォロワー
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _buildFollowStat('フォロー', followingCount, () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const FollowListPage(type: 'following')));
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const FollowListPage(type: 'following')),
+                  );
                 }),
                 const SizedBox(width: 24),
                 _buildFollowStat('フォロワー', followerCount, () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const FollowListPage(type: 'followers')));
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const FollowListPage(type: 'followers')),
+                  );
                 }),
               ],
             ),
