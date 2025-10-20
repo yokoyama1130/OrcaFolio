@@ -19,7 +19,6 @@ class LoginResult {
 class ApiClient {
   ApiClient({required this.baseUrl, this.token});
 
-  /// 例: http://localhost:8765  (実機は http://<MacのIP>:8765)
   final String baseUrl;
 
   /// Authorization に乗せる JWT（無ければ未ログイン扱い）
