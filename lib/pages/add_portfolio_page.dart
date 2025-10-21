@@ -1,4 +1,3 @@
-// lib/pages/add_portfolio_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -19,10 +18,12 @@ class AddPortfolioPage extends StatefulWidget {
     super.key,
     required this.apiBaseUrl,
     required this.token,
+    this.onPosted, // ★ 追加
   });
 
   final String apiBaseUrl;
   final String token;
+  final VoidCallback? onPosted; // ★ 追加
 
   @override
   State<AddPortfolioPage> createState() => _AddPortfolioPageState();
@@ -148,7 +149,7 @@ class _AddPortfolioPageState extends State<AddPortfolioPage> {
 
   // 送信
   Future<void> _submit() async {
-    // 画面側の早期バリデーション（サーバも description/thumbnail を見ます）
+    // 早期バリデーション
     if (_selected == null || _titleCtrl.text.trim().isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -178,7 +179,7 @@ class _AddPortfolioPageState extends State<AddPortfolioPage> {
     try {
       final api = ApiClient(baseUrl: widget.apiBaseUrl, token: widget.token);
 
-      // PDF を NamedBytesFile に変換（ApiClient の型）
+      // PDF を NamedBytesFile に変換
       NamedBytesFile? drawing;
       if (_drawingPdf != null) {
         final b = await _bytesOf(_drawingPdf!);
@@ -194,11 +195,10 @@ class _AddPortfolioPageState extends State<AddPortfolioPage> {
       final id = await api.createPortfolio(
         categoryId: _selected!.id,
         title: _titleCtrl.text.trim(),
-        description: _descCtrl.text.trim(), // 空は送らないが今回は非空確定
+        description: _descCtrl.text.trim(),
         link: _nullIfEmpty(_linkCtrl.text),
         thumbnailFile: _thumbnailFile, // ← サムネ（必須）
-
-        // 機械系（空は送らない）
+        // 機械系
         purpose: _nullIfEmpty(_purposeCtrl.text),
         basicSpec: _nullIfEmpty(_basicSpecCtrl.text),
         designUrl: _nullIfEmpty(_designUrlCtrl.text),
@@ -213,13 +213,10 @@ class _AddPortfolioPageState extends State<AddPortfolioPage> {
         referenceLinks: _nullIfEmpty(_referenceLinksCtrl.text),
         toolUsed: _nullIfEmpty(_toolUsedCtrl.text),
         materialUsed: _nullIfEmpty(_materialUsedCtrl.text),
-
         // プログラミング
         githubUrl: _nullIfEmpty(_githubUrlCtrl.text),
-
         // 化学
         experimentSummary: _nullIfEmpty(_experimentSummaryCtrl.text),
-
         // PDF
         drawingPdf: drawing,
         supplementPdfs: supps,
@@ -230,8 +227,8 @@ class _AddPortfolioPageState extends State<AddPortfolioPage> {
         SnackBar(content: Text('投稿しました（ID: $id）')),
       );
 
-      // === 黒画面対策：戻り先があるなら pop、無ければホームへ ===
-      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+      // ★ Homeタブに切り替え（下メニューはそのまま）
+      widget.onPosted?.call();
 
     } catch (e) {
       if (!mounted) return;
@@ -264,7 +261,7 @@ class _AddPortfolioPageState extends State<AddPortfolioPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   DropdownButtonFormField<Category>(
-                    initialValue: _selected, // ← deprecated な value を使わず initialValue
+                    initialValue: _selected, // deprecatedな value は使わない
                     decoration: const InputDecoration(labelText: 'ジャンル（カテゴリ）'),
                     items: _categories
                         .map((c) => DropdownMenuItem(value: c, child: Text(c.name)))

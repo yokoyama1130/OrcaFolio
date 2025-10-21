@@ -1,4 +1,3 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -63,17 +62,17 @@ class _CalcraftAppState extends State<CalcraftApp> {
     return [
       const HomePage(),
       const SearchPage(),
-      // ← 必須引数を渡す。const は付けない
+      // Add: 投稿成功→Homeタブに戻すための onPosted を渡す
       AddPortfolioPage(
         apiBaseUrl: kApiBaseUrl,
         token: _jwt ?? '',
+        onPosted: () => setState(() => _selectedIndex = 0), // ★ここ
       ),
       const DMListPage(),
-      // ← Profile へも必須引数を渡す
       ProfilePage(
         isLoggedIn: loggedIn,
         apiBaseUrl: kApiBaseUrl,
-        token: _jwt, // null でもOK（未ログイン扱いになる）
+        token: _jwt, // null でもOK（未ログイン扱い）
       ),
     ];
   }
