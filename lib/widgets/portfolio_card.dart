@@ -40,15 +40,12 @@ class _PortfolioCardState extends State<PortfolioCard> {
       _isLiked = !_isLiked;
       _likeCount += _isLiked ? 1 : -1;
     });
-
-    // await http.post(Uri.parse('https://example.com/api/likes/toggle'), body: {...})
   }
 
   void _toggleFollow() {
     setState(() {
       _isFollowed = !_isFollowed;
     });
-
   }
 
   @override
@@ -57,6 +54,7 @@ class _PortfolioCardState extends State<PortfolioCard> {
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      clipBehavior: Clip.antiAlias, // 角丸内にクリップ
       child: InkWell(
         onTap: () {
           Navigator.pushNamed(context, '/detail', arguments: {
@@ -66,18 +64,16 @@ class _PortfolioCardState extends State<PortfolioCard> {
             'likes': _likeCount,
           });
         },
-        borderRadius: BorderRadius.circular(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 画像
-            ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(12)),
-              child: Image.network(widget.imageUrl,
-                  fit: BoxFit.cover, width: double.infinity, height: 200),
+            // ===== サムネ画像（16:9固定・読み込み/エラー対応） =====
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: _NetworkThumb(url: widget.imageUrl),
             ),
-            // 情報欄
+
+            // ===== 情報欄 =====
             Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
@@ -87,8 +83,10 @@ class _PortfolioCardState extends State<PortfolioCard> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('@${widget.username}',
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        '@${widget.username}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       TextButton.icon(
                         onPressed: _toggleFollow,
                         icon: Icon(
@@ -96,7 +94,7 @@ class _PortfolioCardState extends State<PortfolioCard> {
                               ? Icons.check_circle
                               : Icons.person_add_alt_1_outlined,
                           color:
-                              _isFollowed ? Colors.blueAccent : Colors.grey[600],
+                              _isFollowed ? Colors.blueAccent : Colors.grey[700],
                           size: 18,
                         ),
                         label: Text(
@@ -104,22 +102,31 @@ class _PortfolioCardState extends State<PortfolioCard> {
                           style: TextStyle(
                             color: _isFollowed
                                 ? Colors.blueAccent
-                                : Colors.grey[700],
+                                : Colors.grey[800],
                             fontSize: 13,
                           ),
                         ),
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: const Size(0, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
+
                   // タイトル
-                  Text(widget.title,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w500)),
+                  Text(
+                    widget.title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+
                   const SizedBox(height: 10),
+
                   // いいね行
                   Row(
                     children: [
@@ -129,8 +136,9 @@ class _PortfolioCardState extends State<PortfolioCard> {
                           _isLiked
                               ? Icons.favorite
                               : Icons.favorite_border_outlined,
-                          color: _isLiked ? Colors.redAccent : Colors.grey[700],
+                          color: _isLiked ? Colors.redAccent : Colors.grey[800],
                         ),
+                        tooltip: _isLiked ? 'いいね済み' : 'いいね',
                       ),
                       Text('$_likeCount'),
                     ],
@@ -141,6 +149,62 @@ class _PortfolioCardState extends State<PortfolioCard> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 読み込みプレースホルダ & エラープレースホルダ付きのネットワーク画像
+class _NetworkThumb extends StatelessWidget {
+  const _NetworkThumb({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    debugPrint('[PortfolioCard] loading image: $url');
+    // 背景の薄いプレースホルダ
+    final placeholder = Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: Colors.grey.shade200,
+      alignment: Alignment.center,
+      child: const Icon(Icons.image, size: 40, color: Colors.black26),
+    );
+
+    // エラープレースホルダ（404等）
+    final error = Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: Colors.grey.shade300,
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.broken_image_outlined, size: 36, color: Colors.black38),
+          SizedBox(height: 6),
+          Text('画像を読み込めませんでした', style: TextStyle(color: Colors.black54)),
+        ],
+      ),
+    );
+
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      // ローディング中は placeholder を表示、完了時はフェード
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) {
+          return AnimatedOpacity(
+            opacity: 1,
+            duration: const Duration(milliseconds: 200),
+            child: child,
+          );
+        } else {
+          return placeholder;
+        }
+      },
+      // 404/失敗時
+      errorBuilder: (context, _, __) => error,
     );
   }
 }

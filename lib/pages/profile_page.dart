@@ -1,4 +1,3 @@
-// lib/pages/profile_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -36,6 +35,63 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _token;                   // 実際に使うJWT（引数 or 保存）
   late ApiClient _api;              // _tokenが決まったら初期化
   Future<ProfileResponse>? _future; // API呼び出しFuture
+
+  // ==== 相対パスを絶対URLに直すヘルパ ====
+  // ==== 相対/絶対どちらでも安全に正規化して 127.0.0.1 に向ける ====
+  String _absUrl(String? input, {String fallback = 'https://picsum.photos/400/200'}) {
+    if (input == null || input.isEmpty) return fallback;
+    String raw = input.trim();
+
+    // --- 絶対URLなら localhost→127.0.0.1 のみ置換して返す ---
+    Uri? asUri;
+    try { asUri = Uri.parse(raw); } catch (_) {}
+    if (asUri != null && asUri.hasScheme && (asUri.scheme == 'http' || asUri.scheme == 'https')) {
+      if (asUri.host == 'localhost') {
+        return asUri.replace(host: '127.0.0.1').toString();
+      }
+      // 念のため /img/img/uploads を潰す
+      final fixed = asUri.replace(
+        path: _normalizeUploadsPath(asUri.path),
+      ).toString();
+      return fixed;
+    }
+
+    // --- 相対パス（例: /img/uploads/.. or /uploads/.. or img/uploads/..）---
+    // 1) ベースURLも localhost → 127.0.0.1 に正規化
+    final baseUri = Uri.parse(widget.apiBaseUrl.replaceAll(RegExp(r'/$'), ''));
+    final normalizedBase = baseUri.host == 'localhost'
+        ? baseUri.replace(host: '127.0.0.1')
+        : baseUri;
+
+    // 2) 先頭スラッシュを必ず付ける
+    String path = raw.startsWith('/') ? raw : '/$raw';
+
+    // 3) /uploads → /img/uploads に寄せ、二重 /img を除去
+    path = _normalizeUploadsPath(path);
+
+    return '${normalizedBase.toString()}$path';
+  }
+
+  // /uploads → /img/uploads に寄せ、/img/img/uploads を /img/uploads に潰す
+  String _normalizeUploadsPath(String path) {
+    var p = path;
+
+    // //uploads → /uploads などの二重スラッシュ軽減（先頭付近）
+    p = p.replaceFirst(RegExp(r'^//+'), '/');
+
+    // /uploads/... を /img/uploads/... に寄せる
+    if (p.startsWith('/uploads/')) {
+      p = '/img$p'; // → /img/uploads/...
+    }
+
+    // /img//uploads → /img/uploads に寄せる
+    p = p.replaceFirst('/img//uploads/', '/img/uploads/');
+
+    // /img/img/uploads → /img/uploads に寄せる（重複 /img を1つに）
+    p = p.replaceFirst(RegExp(r'^/img/+img/'), '/img/');
+
+    return p;
+  }
 
   @override
   void initState() {
@@ -259,19 +315,16 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         title: Text(user.name.isEmpty ? 'Profile' : user.name),
         actions: [
-          // ✅ 設定 → await で戻り値を受け取り、logout を反映
+          // 設定
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: '設定',
             onPressed: () async {
-              // ← await の前にキャプチャ
               final messenger = ScaffoldMessenger.of(context);
-
               final result = await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SettingsPage()),
               );
-
               if (!mounted) return;
               if (result == 'logged_out') {
                 await _storage.delete(key: 'jwt');
@@ -280,36 +333,29 @@ class _ProfilePageState extends State<ProfilePage> {
                   _api   = ApiClient(baseUrl: widget.apiBaseUrl, token: _token);
                   _future = null;
                 });
-
-                // ← context を使わず、事前にキャプチャした messenger を使う
-                messenger.showSnackBar(
-                  const SnackBar(content: Text('ログアウトしました')),
-                );
+                messenger.showSnackBar(const SnackBar(content: Text('ログアウトしました')));
               }
             },
           ),
+          // プロフィール編集
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'プロフィール編集',
             onPressed: () async {
-              // 現在表示している値を編集画面へ渡す
               final updated = await Navigator.push<ProfileUser?>(
                 context,
                 MaterialPageRoute(
                   builder: (_) => EditProfilePage(
                     apiBaseUrl: widget.apiBaseUrl,
-                    token: _token,                // ← JWT を渡す（編集API用）
-                    initialName: user.name,       // ← 現在のユーザー名を渡す
-                    initialBio: user.bio,         // ← 現在の自己紹介を渡す
-                    initialIconUrl: user.iconUrl, // ← 現在のアイコンURLを渡す
+                    token: _token,                // JWT
+                    initialName: user.name,
+                    initialBio: user.bio,
+                    initialIconUrl: user.iconUrl,
                   ),
                 ),
               );
-              // 戻り値があれば即時に反映しつつ、サーバー値とも整合させたいなら再読込
               if (updated != null) {
-                // 軽く即時反映したい場合はここで setState して見た目だけ更新してもOK
-                // ただし一貫性重視ならサーバー値を再取得する
-                await _reload();
+                await _reload(); // サーバ値を再取得して整合させる
               }
             },
           ),
@@ -321,11 +367,12 @@ class _ProfilePageState extends State<ProfilePage> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
           children: [
+            // プロフアイコンも相対→絶対に補正
             CircleAvatar(
               radius: 50,
-              backgroundImage: (user.iconUrl != null && user.iconUrl!.isNotEmpty)
-                  ? NetworkImage(user.iconUrl!)
-                  : const NetworkImage('https://picsum.photos/200'),
+              backgroundImage: NetworkImage(
+                _absUrl(user.iconUrl, fallback: 'https://picsum.photos/200'),
+              ),
             ),
             const SizedBox(height: 12),
             Text(
@@ -370,7 +417,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: PortfolioCard(
                     username: user.name,
                     title: p.title,
-                    imageUrl: p.imageUrl ?? 'https://picsum.photos/400/200',
+                    // ← ここで絶対URLに補正してから渡す！
+                    imageUrl: _absUrl(p.imageUrl),
                     likes: p.likes,
                     initiallyLiked: false,
                     initiallyFollowed: false,

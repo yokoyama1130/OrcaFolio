@@ -21,8 +21,11 @@ class CalcraftApp extends StatefulWidget {
 }
 
 class _CalcraftAppState extends State<CalcraftApp> {
-  // 実機デバッグ時は Mac のローカル IP に置き換えてね（例: 'http://192.168.1.10:8765'）
-  static const String kApiBaseUrl = 'http://localhost:8765';
+  // // 実機デバッグ時は Mac のローカル IP に置き換えてね（例: 'http://192.168.1.10:8765'）
+  // static const String kApiBaseUrl = 'http://localhost:8765';
+  // 実機は http://<MacのIP>:8765 にしてね
+  static const String kApiBaseUrl = 'http://127.0.0.1:8765';
+
 
   final _storage = const FlutterSecureStorage();
 
