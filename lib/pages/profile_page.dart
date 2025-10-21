@@ -37,61 +37,61 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<ProfileResponse>? _future; // API呼び出しFuture
 
   // ==== 相対パスを絶対URLに直すヘルパ ====
-  // ==== 相対/絶対どちらでも安全に正規化して 127.0.0.1 に向ける ====
+  // 相対も絶対も安全に絶対URLへ。localhost は 127.0.0.1 へ寄せる。
   String _absUrl(String? input, {String fallback = 'https://picsum.photos/400/200'}) {
     if (input == null || input.isEmpty) return fallback;
-    String raw = input.trim();
+    final raw = input.trim();
 
-    // --- 絶対URLなら localhost→127.0.0.1 のみ置換して返す ---
-    Uri? asUri;
-    try { asUri = Uri.parse(raw); } catch (_) {}
-    if (asUri != null && asUri.hasScheme && (asUri.scheme == 'http' || asUri.scheme == 'https')) {
-      if (asUri.host == 'localhost') {
-        return asUri.replace(host: '127.0.0.1').toString();
-      }
-      // 念のため /img/img/uploads を潰す
-      final fixed = asUri.replace(
-        path: _normalizeUploadsPath(asUri.path),
-      ).toString();
-      return fixed;
+    // 1) すでに http(s) の絶対URL
+    Uri? u;
+    try { u = Uri.parse(raw); } catch (_) {}
+    if (u != null && (u.hasScheme && (u.scheme == 'http' || u.scheme == 'https'))) {
+      final fixedHost = (u.host == 'localhost') ? '127.0.0.1' : u.host;
+      final fixedPath = _normalizeUploadsPath(rawPath: u.path);
+      return u.replace(host: fixedHost, path: fixedPath).toString();
     }
 
-    // --- 相対パス（例: /img/uploads/.. or /uploads/.. or img/uploads/..）---
-    // 1) ベースURLも localhost → 127.0.0.1 に正規化
-    final baseUri = Uri.parse(widget.apiBaseUrl.replaceAll(RegExp(r'/$'), ''));
-    final normalizedBase = baseUri.host == 'localhost'
-        ? baseUri.replace(host: '127.0.0.1')
-        : baseUri;
+    // 2) 相対パス（/uploads/... や /img/uploads/... や uploads/... など）
+    final base = Uri.parse(widget.apiBaseUrl.replaceAll(RegExp(r'/$'), ''));
+    final baseFixed = (base.host == 'localhost') ? base.replace(host: '127.0.0.1') : base;
 
-    // 2) 先頭スラッシュを必ず付ける
+    // 先頭スラッシュを補う
     String path = raw.startsWith('/') ? raw : '/$raw';
+    path = _normalizeUploadsPath(rawPath: path);
 
-    // 3) /uploads → /img/uploads に寄せ、二重 /img を除去
-    path = _normalizeUploadsPath(path);
-
-    return '${normalizedBase.toString()}$path';
+    return '${baseFixed.toString()}$path';
   }
 
-  // /uploads → /img/uploads に寄せ、/img/img/uploads を /img/uploads に潰す
-  String _normalizeUploadsPath(String path) {
-    var p = path;
+  /// /img/uploads → /uploads へ寄せる。スラッシュの重複も整える。
+  String _normalizeUploadsPath({required String rawPath}) {
+    String p = rawPath;
 
-    // //uploads → /uploads などの二重スラッシュ軽減（先頭付近）
+    // 先頭側の二重スラッシュ → 単一に
     p = p.replaceFirst(RegExp(r'^//+'), '/');
 
-    // /uploads/... を /img/uploads/... に寄せる
-    if (p.startsWith('/uploads/')) {
-      p = '/img$p'; // → /img/uploads/...
+    // 先頭にスラッシュが無ければ足す（念のため）
+    if (!p.startsWith('/')) p = '/$p';
+
+    // 過去データ互換：/img/uploads/... は /uploads/... に寄せる
+    if (p.startsWith('/img/uploads/')) {
+      p = p.replaceFirst('/img/uploads/', '/uploads/');
+    }
+    if (p.startsWith('/img//uploads/')) {
+      p = p.replaceFirst('/img//uploads/', '/uploads/');
+    }
+    if (p.startsWith('img/uploads/')) {
+      p = p.replaceFirst('img/uploads/', '/uploads/');
     }
 
-    // /img//uploads → /img/uploads に寄せる
-    p = p.replaceFirst('/img//uploads/', '/img/uploads/');
+    // /uploads が二重になっていたら1つに
+    p = p.replaceFirst('/uploads/uploads/', '/uploads/');
 
-    // /img/img/uploads → /img/uploads に寄せる（重複 /img を1つに）
-    p = p.replaceFirst(RegExp(r'^/img/+img/'), '/img/');
+    // 途中の余計な二重スラッシュを軽減（プロトコルは渡ってこないので安全）
+    p = p.replaceAll(RegExp(r'/{2,}'), '/');
 
     return p;
   }
+
 
   @override
   void initState() {
