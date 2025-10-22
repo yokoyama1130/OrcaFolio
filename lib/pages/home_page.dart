@@ -15,7 +15,9 @@ class HomePage extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         itemCount: 8,
         itemBuilder: (context, index) {
-          return const PortfolioCard(
+          return PortfolioCard(
+            portfolioId: -1,                       // ダミーID（詳細遷移しない想定なら -1 等）
+            apiBaseUrl: 'http://127.0.0.1:8765',   // 実機なら Mac のIPに
             username: 'yokoyama1130',
             title: '3Dプリンタで作る自作ロボットアーム',
             imageUrl: 'https://picsum.photos/400/250',

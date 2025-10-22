@@ -415,6 +415,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 (p) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: PortfolioCard(
+                    portfolioId: p.id,                    // ★ 追加
+                    apiBaseUrl: widget.apiBaseUrl,  
                     username: user.name,
                     title: p.title,
                     // ← ここで絶対URLに補正してから渡す！

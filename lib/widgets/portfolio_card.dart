@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class PortfolioCard extends StatefulWidget {
+  final int portfolioId;
+  final String apiBaseUrl;
   final String username;
   final String title;
   final String imageUrl;
@@ -10,6 +12,8 @@ class PortfolioCard extends StatefulWidget {
 
   const PortfolioCard({
     super.key,
+    required this.portfolioId,
+    required this.apiBaseUrl,
     required this.username,
     required this.title,
     required this.imageUrl,
@@ -54,10 +58,12 @@ class _PortfolioCardState extends State<PortfolioCard> {
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      clipBehavior: Clip.antiAlias, // 角丸内にクリップ
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () {
           Navigator.pushNamed(context, '/detail', arguments: {
+            'id': widget.portfolioId,        // ← 修正
+            'apiBaseUrl': widget.apiBaseUrl, // ← 修正（ハードコードしない）
             'username': widget.username,
             'title': widget.title,
             'imageUrl': widget.imageUrl,
@@ -67,42 +73,37 @@ class _PortfolioCardState extends State<PortfolioCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ===== サムネ画像（16:9固定・読み込み/エラー対応） =====
+            // 画像（16:9）
             AspectRatio(
               aspectRatio: 16 / 9,
               child: _NetworkThumb(url: widget.imageUrl),
             ),
 
-            // ===== 情報欄 =====
+            // 情報欄
             Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 投稿者＋フォローボタン
+                  // 投稿者＋フォロー
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        '@${widget.username}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                      Text('@${widget.username}',
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
                       TextButton.icon(
                         onPressed: _toggleFollow,
                         icon: Icon(
                           _isFollowed
                               ? Icons.check_circle
                               : Icons.person_add_alt_1_outlined,
-                          color:
-                              _isFollowed ? Colors.blueAccent : Colors.grey[700],
+                          color: _isFollowed ? Colors.blueAccent : Colors.grey[700],
                           size: 18,
                         ),
                         label: Text(
                           _isFollowed ? 'フォロー中' : 'フォロー',
                           style: TextStyle(
-                            color: _isFollowed
-                                ? Colors.blueAccent
-                                : Colors.grey[800],
+                            color: _isFollowed ? Colors.blueAccent : Colors.grey[800],
                             fontSize: 13,
                           ),
                         ),
@@ -119,23 +120,17 @@ class _PortfolioCardState extends State<PortfolioCard> {
                   // タイトル
                   Text(
                     widget.title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
-
                   const SizedBox(height: 10),
 
-                  // いいね行
+                  // いいね
                   Row(
                     children: [
                       IconButton(
                         onPressed: _toggleLike,
                         icon: Icon(
-                          _isLiked
-                              ? Icons.favorite
-                              : Icons.favorite_border_outlined,
+                          _isLiked ? Icons.favorite : Icons.favorite_border_outlined,
                           color: _isLiked ? Colors.redAccent : Colors.grey[800],
                         ),
                         tooltip: _isLiked ? 'いいね済み' : 'いいね',
@@ -153,16 +148,14 @@ class _PortfolioCardState extends State<PortfolioCard> {
   }
 }
 
-/// 読み込みプレースホルダ & エラープレースホルダ付きのネットワーク画像
 class _NetworkThumb extends StatelessWidget {
   const _NetworkThumb({required this.url});
-
   final String url;
 
   @override
   Widget build(BuildContext context) {
     debugPrint('[PortfolioCard] loading image: $url');
-    // 背景の薄いプレースホルダ
+
     final placeholder = Container(
       width: double.infinity,
       height: double.infinity,
@@ -171,7 +164,6 @@ class _NetworkThumb extends StatelessWidget {
       child: const Icon(Icons.image, size: 40, color: Colors.black26),
     );
 
-    // エラープレースホルダ（404等）
     final error = Container(
       width: double.infinity,
       height: double.infinity,
@@ -191,7 +183,6 @@ class _NetworkThumb extends StatelessWidget {
       url,
       fit: BoxFit.cover,
       width: double.infinity,
-      // ローディング中は placeholder を表示、完了時はフェード
       loadingBuilder: (context, child, loadingProgress) {
         if (loadingProgress == null) {
           return AnimatedOpacity(
@@ -199,11 +190,9 @@ class _NetworkThumb extends StatelessWidget {
             duration: const Duration(milliseconds: 200),
             child: child,
           );
-        } else {
-          return placeholder;
         }
+        return placeholder;
       },
-      // 404/失敗時
       errorBuilder: (context, _, __) => error,
     );
   }
