@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../pages/profile_page.dart';
 import 'package:http/http.dart' as http;
 
 import '../widgets/portfolio_card.dart';
@@ -247,16 +248,29 @@ class _SearchPageState extends State<SearchPage> with TickerProviderStateMixin {
                               : iconRaw;
                           final iconUrl =
                               _absUrl(iconPath, fallback: 'https://picsum.photos/100');
-
                           return ListTile(
                             leading: CircleAvatar(
                               backgroundImage: NetworkImage(iconUrl),
                             ),
                             title: Text((u['name'] ?? 'User') as String),
-                            subtitle:
-                                (u['bio'] != null) ? Text(u['bio'] as String) : null,
+                            subtitle: (u['bio'] != null) ? Text(u['bio'] as String) : null,
                             onTap: () {
-                              // ここでユーザー詳細へ遷移したければNavigator.pushNamed(...)
+                              // Users APIのレスポンスからIDを取り出して遷移
+                              final userId = (u['id'] as num).toInt();
+
+                              final base = widget.apiBaseUrl.replaceFirst('localhost', '127.0.0.1');
+
+                              // 直接ページをpush（Named Routeが無くても動く）
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ProfilePage(
+                                    apiBaseUrl: base, // ← あなたのSearchPageにあるbaseを使う
+                                    viewUserId: userId,            // ← 他人プロフィールとして表示
+                                    isLoggedIn: false,             // （自分プロフィールでなく公開表示）
+                                  ),
+                                ),
+                              );
                             },
                           );
                         },
