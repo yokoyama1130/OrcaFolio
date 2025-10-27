@@ -1,6 +1,8 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+// Pages
 import 'pages/home_page.dart';
 import 'pages/profile_page.dart';
 import 'pages/add_portfolio_page.dart';
@@ -10,6 +12,7 @@ import 'pages/search_page.dart';
 import 'pages/follow_list_page.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const CalcraftApp());
 }
 
@@ -21,17 +24,15 @@ class CalcraftApp extends StatefulWidget {
 }
 
 class _CalcraftAppState extends State<CalcraftApp> {
-  // // 実機デバッグ時は Mac のローカル IP に置き換えてね（例: 'http://192.168.1.10:8765'）
-  // static const String kApiBaseUrl = 'http://localhost:8765';
-  // 実機は http://<MacのIP>:8765 にしてね
+  /// 💡 実機デバッグ時は Mac のローカル IP に置き換えてください。
+  /// 例) 'http://192.168.1.15:8765'
   static const String kApiBaseUrl = 'http://127.0.0.1:8765';
 
-
-  final _storage = const FlutterSecureStorage();
+  final _secure = const FlutterSecureStorage();
 
   int _selectedIndex = 0;
-  String? _jwt;               // 起動時に SecureStorage から読み込み
-  bool _booting = true;       // 起動中インジケータ用
+  String? _jwt;
+  bool _booting = true;
 
   @override
   void initState() {
@@ -39,20 +40,25 @@ class _CalcraftAppState extends State<CalcraftApp> {
     _bootstrap();
   }
 
+  /// 起動時に JWT を読み込む
   Future<void> _bootstrap() async {
-    final token = await _storage.read(key: 'jwt');
+    // どちらかに保存している想定。優先順: jwt -> auth_token
+    final jwt = await _secure.read(key: 'jwt') ??
+        await _secure.read(key: 'auth_token');
+
     if (!mounted) return;
     setState(() {
-      _jwt = token;
+      _jwt = jwt;
       _booting = false;
     });
   }
 
-  // 必要に応じて子画面から呼べるようにした再読込ヘルパ（使わなくてもOK）
+  /// ほかの画面からトークン更新したいとき用
   Future<void> refreshToken() async {
-    final token = await _storage.read(key: 'jwt');
+    final jwt = await _secure.read(key: 'jwt') ??
+        await _secure.read(key: 'auth_token');
     if (!mounted) return;
-    setState(() => _jwt = token);
+    setState(() => _jwt = jwt);
   }
 
   void _onItemTapped(int index) {
@@ -61,21 +67,35 @@ class _CalcraftAppState extends State<CalcraftApp> {
 
   List<Widget> _buildPages() {
     final loggedIn = (_jwt != null && _jwt!.isNotEmpty);
+    final token = _jwt ?? '';
 
     return [
+      // Home はダミーでもOK。API使うようにしているなら apiBaseUrl を渡しても良い
       const HomePage(),
-      const SearchPage(),
-      // Add: 投稿成功→Homeタブに戻すための onPosted を渡す
+
+      // 🔎 検索ページにもベースURLを明示
+      SearchPage(apiBaseUrl: kApiBaseUrl),
+
+      // ➕ 投稿ページ（投稿成功時は Home タブへ戻す）
       AddPortfolioPage(
         apiBaseUrl: kApiBaseUrl,
-        token: _jwt ?? '',
-        onPosted: () => setState(() => _selectedIndex = 0), // ★ここ
+        token: token,
+        onPosted: () => setState(() => _selectedIndex = 0),
       ),
-      const DMListPage(),
+
+      // 💬 DM一覧は “要JWT”。必ず token を渡す
+      DMListPage(
+        apiBaseUrl: kApiBaseUrl,
+        token: token,
+        // （任意）トークン切れ時にログイン導線を出したい場合はコールバック用意して呼ぶ
+        // onTokenExpired: () { ... },
+      ),
+
+      // 👤 プロフィール（自分／他人共通。自分用は isLoggedIn=true で表示切替）
       ProfilePage(
         isLoggedIn: loggedIn,
         apiBaseUrl: kApiBaseUrl,
-        token: _jwt, // null でもOK（未ログイン扱い）
+        token: _jwt, // null でも動く実装ならそのまま
       ),
     ];
   }
@@ -91,6 +111,7 @@ class _CalcraftAppState extends State<CalcraftApp> {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
         useMaterial3: true,
       ),
+      // 画面遷移（必要に応じて追加）
       routes: {
         '/detail': (context) => const PortfolioDetailPage(),
         '/followList': (context) => const FollowListPage(type: 'following'),
