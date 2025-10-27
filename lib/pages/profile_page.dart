@@ -389,16 +389,32 @@ class _ProfilePageState extends State<ProfilePage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _buildFollowStat('フォロー', followingCount, () {
+                  final targetUserId = widget.viewUserId ?? res.user.id;
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const FollowListPage(type: 'following')),
+                    MaterialPageRoute(
+                      builder: (_) => FollowListPage(
+                        type: 'following',
+                        userId: targetUserId,
+                        apiBaseUrl: widget.apiBaseUrl,
+                        jwtToken: _token ?? '', // 未ログインでも動くなら空文字でもOK
+                      ),
+                    ),
                   );
                 }),
                 const SizedBox(width: 24),
                 _buildFollowStat('フォロワー', followerCount, () {
+                  final targetUserId = widget.viewUserId ?? res.user.id;
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const FollowListPage(type: 'followers')),
+                    MaterialPageRoute(
+                      builder: (_) => FollowListPage(
+                        type: 'followers',
+                        userId: targetUserId,
+                        apiBaseUrl: widget.apiBaseUrl,
+                        jwtToken: _token ?? '',
+                      ),
+                    ),
                   );
                 }),
               ],

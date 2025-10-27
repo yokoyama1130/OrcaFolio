@@ -23,6 +23,13 @@ class CalcraftApp extends StatefulWidget {
   State<CalcraftApp> createState() => _CalcraftAppState();
 }
 
+/// FollowList に渡すナビゲーション引数
+class FollowListArgs {
+  final String type; // 'following' or 'followers'
+  final int userId;
+  const FollowListArgs({required this.type, required this.userId});
+}
+
 class _CalcraftAppState extends State<CalcraftApp> {
   /// 💡 実機デバッグ時は Mac のローカル IP に置き換えてください。
   /// 例) 'http://192.168.1.15:8765'
@@ -114,7 +121,23 @@ class _CalcraftAppState extends State<CalcraftApp> {
       // 画面遷移（必要に応じて追加）
       routes: {
         '/detail': (context) => const PortfolioDetailPage(),
-        '/followList': (context) => const FollowListPage(type: 'following'),
+
+        // ✅ 引数を ModalRoute.settings.arguments から受け取る
+        '/followList': (context) {
+          final args = ModalRoute.of(context)?.settings.arguments as FollowListArgs?;
+          if (args == null) {
+            // 引数が来てない場合のフォールバック（開発時に気付きやすくする）
+            return const Scaffold(
+              body: Center(child: Text('FollowList: 引数 FollowListArgs が必要です')),
+            );
+          }
+          return FollowListPage(
+            type: args.type,                 // 'following' or 'followers'
+            userId: args.userId,            // 対象ユーザーID（プロフィールの人など）
+            apiBaseUrl: _CalcraftAppState.kApiBaseUrl,
+            jwtToken: _jwt ?? '',
+          );
+        },
         '/home': (_) => const HomePage(),
       },
       home: Scaffold(
