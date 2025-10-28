@@ -21,7 +21,7 @@ class _LikesPageState extends State<LikesPage> {
   String _error = '';
   List<Map<String, dynamic>> _items = [];
 
-  // HomePage と同じ「127.0.0.1補正」済みのベース
+  // HomePageと同等の「localhost→127.0.0.1」補正済みベースURL
   late final Uri _normalizedBase;
 
   @override
@@ -106,19 +106,24 @@ class _LikesPageState extends State<LikesPage> {
         return;
       }
 
+      // サーバーから来た値を最小整形（アイコンとサムネの絶対URL化）
       final items = raw.map<Map<String, dynamic>>((e) {
         final m = Map<String, dynamic>.from(e as Map);
-        // user.icon_path の最終正規化（絶対URLでも補正）
+
+        // user.icon_path を正規化
         if (m['user'] is Map) {
           final u = Map<String, dynamic>.from(m['user'] as Map);
           u['icon_path'] = _absUrl((u['icon_path'] ?? '').toString());
           m['user'] = u;
         }
-        // サムネ候補を用意（API仕様に合わせて好きなのを拾う）
+
+        // サムネは thumbnail 最優先、なければ候補を順に
         final thumb = (m['thumbnail'] ??
+                       m['thumbnail_path'] ??
                        m['imageUrl'] ??
                        m['image_url'] ??
                        m['img'] ??
+                       m['image_path'] ??
                        '') as String?;
         m['__thumb__'] = _absUrl(thumb ?? '');
         return m;
