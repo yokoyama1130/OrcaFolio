@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'employer/employer_shell.dart';
+import 'likes_page.dart'; // ← 新規追加
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -18,16 +19,9 @@ class _SettingsPageState extends State<SettingsPage> {
     if (_loggingOut) return;
     setState(() => _loggingOut = true);
     try {
-      // JWTを削除
       await _storage.delete(key: 'jwt');
-
       if (!mounted) return;
-
-      // 親へ「logged_out」合図を返して閉じる
       Navigator.pop(context, 'logged_out');
-      // ポイント: SnackBarは親側で出す方が安全。ここで出すなら pop 前に出す。
-      // ScaffoldMessenger.of(context)
-      //     .showSnackBar(const SnackBar(content: Text('ログアウトしました')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -55,6 +49,25 @@ class _SettingsPageState extends State<SettingsPage> {
             trailing: Icon(Icons.arrow_forward_ios, size: 16),
           ),
           const Divider(),
+
+          // ❤️ いいね一覧へ
+          ListTile(
+            leading: const Icon(Icons.favorite_outline, color: Colors.pinkAccent),
+            title: const Text('いいね一覧を見る'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const LikesPage(
+                    apiBaseUrl: 'http://127.0.0.1:8765',
+                  ),
+                ),
+              );
+            },
+          ),
+
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.redAccent),
             title: const Text('ログアウト', style: TextStyle(color: Colors.redAccent)),
@@ -65,7 +78,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 : null,
           ),
           const Divider(),
-          // 企業モードへ
           TextButton.icon(
             onPressed: () {
               Navigator.push(
