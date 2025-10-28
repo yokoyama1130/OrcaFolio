@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import '../widgets/portfolio_card.dart';
+
 class LikesPage extends StatefulWidget {
   final String apiBaseUrl;
   const LikesPage({super.key, required this.apiBaseUrl});
@@ -19,9 +21,16 @@ class _LikesPageState extends State<LikesPage> {
   String _error = '';
   List<Map<String, dynamic>> _items = [];
 
+  // HomePage と同じ「127.0.0.1補正」済みのベース
+  late final Uri _normalizedBase;
+
   @override
   void initState() {
     super.initState();
+    final baseUri = Uri.parse(widget.apiBaseUrl.replaceAll(RegExp(r'/$'), ''));
+    _normalizedBase =
+        baseUri.host == 'localhost' ? baseUri.replace(host: '127.0.0.1') : baseUri;
+
     _fetchLikes();
   }
 
@@ -33,8 +42,8 @@ class _LikesPageState extends State<LikesPage> {
 
     try {
       final token = await _storage.read(key: 'jwt');
-
       if (token == null || token.isEmpty) {
+        if (!mounted) return;
         setState(() {
           _error = 'ログインが必要です。';
           _loading = false;
@@ -43,11 +52,10 @@ class _LikesPageState extends State<LikesPage> {
         return;
       }
 
-      final url = Uri.parse('${_trimSlash(widget.apiBaseUrl)}/api/likes/favorites.json');
-
+      final uri = Uri.parse('${_normalizedBase.toString()}/api/likes/favorites.json');
       final res = await http
           .get(
-            url,
+            uri,
             headers: {
               'Authorization': 'Bearer $token',
               'Accept': 'application/json',
@@ -55,8 +63,8 @@ class _LikesPageState extends State<LikesPage> {
           )
           .timeout(const Duration(seconds: 20));
 
-      // ステータスコードチェック
       if (res.statusCode != 200) {
+        if (!mounted) return;
         setState(() {
           _error = 'サーバーエラー (${res.statusCode})';
           _loading = false;
@@ -65,8 +73,8 @@ class _LikesPageState extends State<LikesPage> {
         return;
       }
 
-      // 空ボディ対策
       if (res.body.isEmpty) {
+        if (!mounted) return;
         setState(() {
           _error = '空のレスポンスが返りました（body is empty）';
           _loading = false;
@@ -75,9 +83,9 @@ class _LikesPageState extends State<LikesPage> {
         return;
       }
 
-      // Content-Typeチェック（HTML混入時のガード）
       final ctype = (res.headers['content-type'] ?? '').toLowerCase();
       if (!ctype.contains('application/json')) {
+        if (!mounted) return;
         setState(() {
           _error = 'JSON以外のレスポンスです: $ctype';
           _loading = false;
@@ -86,21 +94,10 @@ class _LikesPageState extends State<LikesPage> {
         return;
       }
 
-      // JSONパース
-      Map<String, dynamic> body;
-      try {
-        body = jsonDecode(res.body) as Map<String, dynamic>;
-      } on FormatException catch (fe) {
-        setState(() {
-          _error = 'JSON解析エラー: ${fe.message}';
-          _loading = false;
-          _items = [];
-        });
-        return;
-      }
-
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
       final raw = body['portfolios'];
       if (raw is! List) {
+        if (!mounted) return;
         setState(() {
           _error = '予期しないレスポンス形式（"portfolios" が配列ではありません）';
           _loading = false;
@@ -109,7 +106,23 @@ class _LikesPageState extends State<LikesPage> {
         return;
       }
 
-      final items = raw.cast<Map<String, dynamic>>();
+      final items = raw.map<Map<String, dynamic>>((e) {
+        final m = Map<String, dynamic>.from(e as Map);
+        // user.icon_path の最終正規化（絶対URLでも補正）
+        if (m['user'] is Map) {
+          final u = Map<String, dynamic>.from(m['user'] as Map);
+          u['icon_path'] = _absUrl((u['icon_path'] ?? '').toString());
+          m['user'] = u;
+        }
+        // サムネ候補を用意（API仕様に合わせて好きなのを拾う）
+        final thumb = (m['thumbnail'] ??
+                       m['imageUrl'] ??
+                       m['image_url'] ??
+                       m['img'] ??
+                       '') as String?;
+        m['__thumb__'] = _absUrl(thumb ?? '');
+        return m;
+      }).toList();
 
       if (!mounted) return;
       setState(() {
@@ -133,6 +146,40 @@ class _LikesPageState extends State<LikesPage> {
     }
   }
 
+  // ---- HomePage と同じ思想のURL正規化 ----
+  String _absUrl(String? input) {
+    if (input == null || input.isEmpty) return '';
+    // すでに http(s)
+    if (input.startsWith('http://') || input.startsWith('https://')) {
+      final u = Uri.parse(input);
+      final fixedHost = (u.host == 'localhost') ? u.replace(host: '127.0.0.1') : u;
+      return fixedHost.replace(path: _normalizePublicPath(fixedHost.path)).toString();
+    }
+    // 相対
+    String path = input.startsWith('/') ? input : '/$input';
+    path = _normalizePublicPath(path);
+    return '${_normalizedBase.toString()}$path';
+  }
+
+  /// /img/uploads → /uploads、/icons → /img/icons
+  String _normalizePublicPath(String path) {
+    var p = path;
+    p = p.replaceFirst(RegExp(r'^//+'), '/');
+    p = p.replaceFirst(RegExp(r'^/img/+img/'), '/img/');
+    p = p.replaceFirst('/img//uploads/', '/img/uploads/');
+
+    if (p.startsWith('/img/uploads/')) {
+      p = p.replaceFirst('/img/uploads/', '/uploads/');
+    }
+    if (p.startsWith('/icons/')) {
+      p = '/img$p'; // → /img/icons/...
+    }
+    p = p.replaceAll(RegExp(r'/{2,}'), '/');
+    return p;
+  }
+
+  Future<void> _reload() async => _fetchLikes();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -140,88 +187,64 @@ class _LikesPageState extends State<LikesPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error.isNotEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_error, textAlign: TextAlign.center),
-                        const SizedBox(height: 12),
-                        ElevatedButton.icon(
-                          onPressed: _fetchLikes,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('再読み込み'),
-                        ),
-                      ],
+              ? ListView(
+                  children: [
+                    const SizedBox(height: 60),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          Text(_error, textAlign: TextAlign.center),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: _reload,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('再読み込み'),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 )
               : RefreshIndicator(
-                  onRefresh: _fetchLikes,
-                  child: ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: _items.length,
-                    separatorBuilder: (_, __) => const Divider(height: 0),
-                    itemBuilder: (context, i) {
-                      final p = _items[i];
-
-                      final title = (p['title'] ?? '(タイトルなし)').toString();
-                      final likeCount = (p['like_count'] ?? 0).toString();
-
-                      final user = (p['user'] as Map?) ?? const {};
-                      final name = (user['name'] ?? '(不明ユーザー)').toString();
-                      final icon = (user['icon_path'] ?? '').toString();
-
-                      return ListTile(
-                        leading: CircleAvatar(
-                          radius: 24,
-                          backgroundImage: icon.isNotEmpty ? NetworkImage(_absUrl(icon, widget.apiBaseUrl)) : null,
-                          child: icon.isEmpty ? const Icon(Icons.person) : null,
-                        ),
-                        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text('@$name', maxLines: 1, overflow: TextOverflow.ellipsis),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.favorite, color: Colors.pinkAccent, size: 18),
-                            const SizedBox(width: 4),
-                            Text(likeCount),
+                  onRefresh: _reload,
+                  child: _items.isEmpty
+                      ? ListView(
+                          children: const [
+                            SizedBox(height: 60),
+                            Center(child: Text('まだ「いいね」した投稿がありません')),
                           ],
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: _items.length,
+                          itemBuilder: (context, index) {
+                            final p = Map<String, dynamic>.from(_items[index]);
+                            final user = (p['user'] is Map)
+                                ? Map<String, dynamic>.from(p['user'] as Map)
+                                : const <String, dynamic>{};
+
+                            final id    = (p['id'] as num).toInt();
+                            final title = (p['title'] ?? '').toString();
+                            final name  = (user['name'] ?? 'User').toString();
+
+                            final imgUrl = (p['__thumb__'] as String?) ?? '';
+                            final likes  = ((p['like_count'] ?? p['likes'] ?? 0) as num).toInt();
+
+                            // いいね一覧は自分が「いいね」済みなので true
+                            return PortfolioCard(
+                              portfolioId: id,
+                              apiBaseUrl: widget.apiBaseUrl,
+                              username: name,
+                              title: title,
+                              imageUrl: imgUrl.isEmpty ? 'https://picsum.photos/400/250' : imgUrl,
+                              likes: likes,
+                              initiallyLiked: true,
+                              initiallyFollowed: false,
+                            );
+                          },
                         ),
-                        onTap: () {
-                          // 投稿詳細へ（routesに /detail がある想定）
-                          final id = p['id'];
-                          if (id != null) {
-                            Navigator.pushNamed(context, '/detail', arguments: id);
-                          }
-                        },
-                      );
-                    },
-                  ),
                 ),
     );
   }
-}
-
-// ---- helpers ----
-String _trimSlash(String s) => s.endsWith('/') ? s.substring(0, s.length - 1) : s;
-
-/// 相対パスを絶対URLに補正（/icons → /img/icons などの軽い互換を考慮）
-String _absUrl(String path, String base) {
-  final raw = path.trim();
-  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-
-  // /icons/* → /img/icons/* に寄せる（サーバ実体が /img/icons のとき）
-  String p = raw.startsWith('/') ? raw : '/$raw';
-  if (p.startsWith('/icons/')) {
-    p = '/img$p'; // => /img/icons/...
-  }
-  // /img/uploads → /uploads 互換（必要なら）
-  if (p.startsWith('/img/uploads/')) {
-    p = p.replaceFirst('/img', ''); // => /uploads/...
-  }
-
-  final b = _trimSlash(base);
-  return '$b$p';
 }
