@@ -310,7 +310,10 @@ class _ChatPageState extends State<ChatPage> {
                   Text(
                     'ID: ${widget.conversationId}',
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.7)),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
                   ),
                 ],
               ),
@@ -369,7 +372,7 @@ class _ChatPageState extends State<ChatPage> {
                                 ),
                                 decoration: BoxDecoration(
                                   color: fromMe
-                                      ? Colors.blueAccent.withOpacity(0.85)
+                                      ? Colors.blueAccent.withValues(alpha: 0.85)
                                       : Colors.grey.shade300,
                                   borderRadius: BorderRadius.circular(12),
                                 ),
