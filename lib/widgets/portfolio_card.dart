@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class PortfolioCard extends StatefulWidget {
   final int portfolioId;
@@ -27,9 +30,16 @@ class PortfolioCard extends StatefulWidget {
 }
 
 class _PortfolioCardState extends State<PortfolioCard> {
+  static const _storage = FlutterSecureStorage();
+
   late bool _isLiked;
   late bool _isFollowed;
   late int _likeCount;
+
+  // localhost→127.0.0.1 補正済みベース
+  late final Uri _normalizedBase;
+
+  bool _liking = false; // 二度押し防止
 
   @override
   void initState() {
@@ -37,19 +47,75 @@ class _PortfolioCardState extends State<PortfolioCard> {
     _isLiked = widget.initiallyLiked;
     _isFollowed = widget.initiallyFollowed;
     _likeCount = widget.likes;
+
+    final baseUri = Uri.parse(widget.apiBaseUrl.replaceAll(RegExp(r'/$'), ''));
+    _normalizedBase =
+        baseUri.host == 'localhost' ? baseUri.replace(host: '127.0.0.1') : baseUri;
   }
 
-  void _toggleLike() {
+  Future<void> _toggleLike() async {
+    if (_liking) return;
+    _liking = true;
+
+    final prevLiked = _isLiked;
+    final prevCount = _likeCount;
+
+    // 楽観更新
     setState(() {
       _isLiked = !_isLiked;
       _likeCount += _isLiked ? 1 : -1;
     });
+
+    try {
+      final token = await _storage.read(key: 'jwt');
+      if (token == null || token.isEmpty) {
+        throw Exception('ログインが必要です（トークンなし）');
+      }
+
+      final uri = _normalizedBase.replace(path: '/api/likes/toggle.json');
+      final res = await http
+          .post(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: {'portfolio_id': '${widget.portfolioId}'},
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (res.statusCode != 200) {
+        throw Exception('HTTP ${res.statusCode}: ${res.body}');
+      }
+      // サーバ側で likeCount を返してるので任意で同期
+      // final map = jsonDecode(res.body) as Map<String, dynamic>;
+      // if (map['likeCount'] is num) {
+      //   setState(() => _likeCount = (map['likeCount'] as num).toInt());
+      // }
+    } on TimeoutException catch (_) {
+      _rollbackLike(prevLiked, prevCount, 'タイムアウトしました');
+    } catch (e) {
+      _rollbackLike(prevLiked, prevCount, 'いいねに失敗しました: $e');
+    } finally {
+      _liking = false;
+    }
+  }
+
+  void _rollbackLike(bool prevLiked, int prevCount, String message) {
+    if (!mounted) return;
+    setState(() {
+      _isLiked = prevLiked;
+      _likeCount = prevCount;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   void _toggleFollow() {
-    setState(() {
-      _isFollowed = !_isFollowed;
-    });
+    // まだAPI未接続ならUIだけ
+    setState(() => _isFollowed = !_isFollowed);
+    // TODO: /api/follows/toggle を作ったらここでPOST
   }
 
   @override
@@ -62,8 +128,8 @@ class _PortfolioCardState extends State<PortfolioCard> {
       child: InkWell(
         onTap: () {
           Navigator.pushNamed(context, '/detail', arguments: {
-            'id': widget.portfolioId,        // ← 修正
-            'apiBaseUrl': widget.apiBaseUrl, // ← 修正（ハードコードしない）
+            'id': widget.portfolioId,
+            'apiBaseUrl': widget.apiBaseUrl,
             'username': widget.username,
             'title': widget.title,
             'imageUrl': widget.imageUrl,
@@ -73,7 +139,7 @@ class _PortfolioCardState extends State<PortfolioCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 画像（16:9）
+            // サムネ（16:9）
             AspectRatio(
               aspectRatio: 16 / 9,
               child: _NetworkThumb(url: widget.imageUrl),
@@ -89,8 +155,10 @@ class _PortfolioCardState extends State<PortfolioCard> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('@${widget.username}',
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        '@${widget.username}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       TextButton.icon(
                         onPressed: _toggleFollow,
                         icon: Icon(
@@ -131,7 +199,7 @@ class _PortfolioCardState extends State<PortfolioCard> {
                         onPressed: _toggleLike,
                         icon: Icon(
                           _isLiked ? Icons.favorite : Icons.favorite_border_outlined,
-                          color: _isLiked ? Colors.redAccent : Colors.grey[800],
+                          color: _isLiked ? Colors.pinkAccent : Colors.grey[800],
                         ),
                         tooltip: _isLiked ? 'いいね済み' : 'いいね',
                       ),
@@ -154,14 +222,12 @@ class _NetworkThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('[PortfolioCard] loading image: $url');
-
     final placeholder = Container(
       width: double.infinity,
       height: double.infinity,
       color: Colors.grey.shade200,
       alignment: Alignment.center,
-      child: const Icon(Icons.image, size: 40, color: Colors.black26),
+      child: const Icon(Icons.image, size: 40),
     );
 
     final error = Container(
@@ -172,9 +238,9 @@ class _NetworkThumb extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: const [
-          Icon(Icons.broken_image_outlined, size: 36, color: Colors.black38),
+          Icon(Icons.broken_image_outlined, size: 36),
           SizedBox(height: 6),
-          Text('画像を読み込めませんでした', style: TextStyle(color: Colors.black54)),
+          Text('画像を読み込めませんでした'),
         ],
       ),
     );
@@ -183,8 +249,8 @@ class _NetworkThumb extends StatelessWidget {
       url,
       fit: BoxFit.cover,
       width: double.infinity,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) {
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) {
           return AnimatedOpacity(
             opacity: 1,
             duration: const Duration(milliseconds: 200),
@@ -192,8 +258,8 @@ class _NetworkThumb extends StatelessWidget {
           );
         }
         return placeholder;
-      },
-      errorBuilder: (context, _, __) => error,
+    },
+      errorBuilder: (_, __, ___) => error,
     );
   }
 }
