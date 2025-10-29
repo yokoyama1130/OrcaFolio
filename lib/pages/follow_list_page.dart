@@ -30,10 +30,27 @@ class _FollowListPageState extends State<FollowListPage> {
   String _error = '';
   List<_FollowUser> _items = [];
 
+  // 連打ガード：いまトグル中の userId セット
+  final Set<int> _mutating = {};
+
+  // 低ノイズなスピナー表示（350ms 以上かかったときだけ出す）
+  final Set<int> _spinVisible = {};                // 表示対象の userId
+  final Map<int, Timer> _spinDelayTimers = {};     // 遅延表示タイマー
+
   @override
   void initState() {
     super.initState();
     _fetch();
+  }
+
+  @override
+  void dispose() {
+    // 画面離脱時にタイマーを必ず停止
+    for (final t in _spinDelayTimers.values) {
+      t.cancel();
+    }
+    _spinDelayTimers.clear();
+    super.dispose();
   }
 
   Future<void> _fetch() async {
@@ -59,12 +76,6 @@ class _FollowListPageState extends State<FollowListPage> {
           )
           .timeout(const Duration(seconds: 20));
 
-      // デバッグログ（開発時のみ適宜コメントアウトOK）
-      final previewLen = res.body.length < 200 ? res.body.length : 200;
-      debugPrint('[FollowList] GET $url -> ${res.statusCode}');
-      debugPrint('[FollowList] content-type: ${res.headers['content-type']}');
-      debugPrint('[FollowList] body(head): "${res.body.substring(0, previewLen)}"');
-
       if (!mounted) return;
 
       if (res.statusCode != 200) {
@@ -74,8 +85,6 @@ class _FollowListPageState extends State<FollowListPage> {
         });
         return;
       }
-
-      // 空ボディ対策
       if (res.body.isEmpty) {
         setState(() {
           _error = '空のレスポンスが返りました（body is empty）';
@@ -84,7 +93,6 @@ class _FollowListPageState extends State<FollowListPage> {
         return;
       }
 
-      // JSON以外（HTMLなど）対策
       final contentType = (res.headers['content-type'] ?? '').toLowerCase();
       if (!contentType.contains('application/json')) {
         setState(() {
@@ -94,7 +102,6 @@ class _FollowListPageState extends State<FollowListPage> {
         return;
       }
 
-      // JSONパース
       Map<String, dynamic> body;
       try {
         body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -116,7 +123,6 @@ class _FollowListPageState extends State<FollowListPage> {
         return;
       }
 
-      // APIのレスポンスを統一モデルへマッピング（安全キャスト）
       final items = <_FollowUser>[];
       for (final e in raw) {
         if (e is! Map) continue;
@@ -142,7 +148,7 @@ class _FollowListPageState extends State<FollowListPage> {
               (iconPath is String) ? iconPath : '',
               _fixLocalhost(widget.apiBaseUrl),
             ),
-            // APIが返した値があればそれを使う、無ければ following 画面は true 仮定
+            // APIが返した値があればそれ、無ければ following 画面は true 仮定
             isFollowed: apiSaysFollowed ?? (widget.type == 'following'),
           ),
         );
@@ -167,17 +173,126 @@ class _FollowListPageState extends State<FollowListPage> {
     }
   }
 
-  Future<void> _onRefresh() async {
-    await _fetch();
-  }
+  Future<void> _onRefresh() async => _fetch();
 
-  void _toggleFollowLocal(int index) {
-    // まだトグルAPIを作っていない想定。UIだけ反映（後でAPIと接続）
+  /// サーバーにフォロー/解除をトグル依頼（楽観更新＋失敗時ロールバック）
+  Future<void> _toggleFollowServer(int index) async {
+    final user = _items[index];
+    if (_mutating.contains(user.userId)) return; // 連打ガード
+    _mutating.add(user.userId);
+
+    // 楽観更新（UIは即変わる）
+    final prev = user.isFollowed;
     setState(() {
-      _items[index] = _items[index].copyWith(
-        isFollowed: !_items[index].isFollowed,
-      );
+      _items[index] = user.copyWith(isFollowed: !prev);
     });
+
+    // --- 350ms 遅延してからスピナー表示（それまでに終われば出さない） ---
+    _spinDelayTimers[user.userId]?.cancel();
+    _spinDelayTimers[user.userId] = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      setState(() {
+        _spinVisible.add(user.userId);
+      });
+    });
+
+    final url = Uri.parse(
+      '${_trimSlash(_fixLocalhost(widget.apiBaseUrl))}/api/follows/toggle.json',
+    );
+
+    try {
+      final res = await http
+          .post(
+            url,
+            headers: {
+              'Authorization': 'Bearer ${widget.jwtToken}',
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'target_user_id': user.userId}),
+          )
+          .timeout(const Duration(seconds: 8)); // 少し短めでもOK
+
+      if (!mounted) return;
+
+      if (res.statusCode == 401) {
+        // 認証切れ等 → ロールバック
+        setState(() {
+          _items[index] = user.copyWith(isFollowed: prev);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ログインが必要です（401）')),
+        );
+        return;
+      }
+      if (res.statusCode != 200) {
+        // エラー → ロールバック
+        setState(() {
+          _items[index] = user.copyWith(isFollowed: prev);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('フォロー更新に失敗しました（${res.statusCode}）')),
+        );
+        return;
+      }
+
+      // { success: true, following: bool } を想定
+      bool ok = false;
+      bool? nowFollowing;
+      try {
+        final map = jsonDecode(res.body) as Map<String, dynamic>;
+        ok = (map['success'] == true);
+        if (map.containsKey('following')) {
+          nowFollowing = map['following'] as bool?;
+        }
+      } catch (_) {}
+
+      if (!ok) {
+        // 失敗 → ロールバック
+        setState(() {
+          _items[index] = user.copyWith(isFollowed: prev);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('フォロー更新に失敗しました')),
+        );
+        return;
+      }
+
+      // サーバー最終状態で上書き（任意）
+      if (nowFollowing != null) {
+        setState(() {
+          _items[index] = user.copyWith(isFollowed: nowFollowing);
+        });
+      }
+    } on TimeoutException {
+      if (!mounted) return;
+      // タイムアウト → ロールバック
+      setState(() {
+        _items[index] = user.copyWith(isFollowed: prev);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('タイムアウトしました')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      // 例外 → ロールバック
+      setState(() {
+        _items[index] = user.copyWith(isFollowed: prev);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('通信エラー: $e')),
+      );
+    } finally {
+      // スピナー遅延タイマー＆表示を必ず終了
+      _spinDelayTimers[user.userId]?.cancel();
+      _spinDelayTimers.remove(user.userId);
+      if (mounted) {
+        setState(() {
+          _spinVisible.remove(user.userId);
+        });
+      }
+      _mutating.remove(user.userId);
+    }
   }
 
   void _goProfile(int userId) {
@@ -185,13 +300,9 @@ class _FollowListPageState extends State<FollowListPage> {
       context,
       MaterialPageRoute(
         builder: (_) => ProfilePage(
-          // 他人のプロフィールとして開く
-          viewUserId: userId,
+          viewUserId: userId,                       // 他人プロフィールとして開く
           apiBaseUrl: _fixLocalhost(widget.apiBaseUrl),
-          // トークンは null 許可の実装なら渡さなくてもOK。
-          // ここでは持っているなら渡す。
           token: widget.jwtToken.isNotEmpty ? widget.jwtToken : null,
-          // isLoggedIn はトークン有無で便宜上の表示切り替えに使える
           isLoggedIn: widget.jwtToken.isNotEmpty,
         ),
       ),
@@ -231,6 +342,8 @@ class _FollowListPageState extends State<FollowListPage> {
                     separatorBuilder: (_, __) => const Divider(height: 0),
                     itemBuilder: (context, index) {
                       final user = _items[index];
+                      final busyVisual = _spinVisible.contains(user.userId); // ← 遅延表示のみ
+
                       return ListTile(
                         leading: CircleAvatar(
                           backgroundImage: user.avatarUrl.isNotEmpty
@@ -242,28 +355,71 @@ class _FollowListPageState extends State<FollowListPage> {
                               : null,
                         ),
                         title: Text('@${user.username}'),
-                        trailing: ElevatedButton(
-                          onPressed: () => _toggleFollowLocal(index),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: user.isFollowed
-                                ? Colors.grey.shade300
-                                : Colors.blueAccent,
-                            foregroundColor: user.isFollowed
-                                ? Colors.black87
-                                : Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 6,
-                            ),
-                            textStyle: const TextStyle(fontSize: 13),
-                          ),
-                          child: Text(user.isFollowed ? 'フォロー中' : 'フォロー'),
+                        trailing: _FollowButton(
+                          isFollowing: user.isFollowed,
+                          busy: busyVisual, // ← 350ms 以上のときだけ小スピナー
+                          onPressed: () {
+                            if (_mutating.contains(user.userId)) return; // 連打ガード
+                            _toggleFollowServer(index);
+                          },
                         ),
                         onTap: () => _goProfile(user.userId),
                       );
                     },
                   ),
                 ),
+    );
+  }
+}
+
+/// ボタン：無効化はしない（色・ラベルは即時反映）。右に小スピナーを重ねる。
+class _FollowButton extends StatelessWidget {
+  final bool isFollowing;
+  final bool busy;
+  final VoidCallback onPressed;
+
+  const _FollowButton({
+    required this.isFollowing,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = isFollowing ? Colors.grey.shade300 : Colors.blueAccent;
+    final fg = isFollowing ? Colors.black87 : Colors.white;
+
+    return ElevatedButton(
+      onPressed: onPressed, // ← 無効化しない
+      style: ElevatedButton.styleFrom(
+        backgroundColor: bg,
+        foregroundColor: fg,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        textStyle: const TextStyle(fontSize: 13),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ラベルは常に表示（即時切替）
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 120),
+            transitionBuilder: (child, anim) =>
+                FadeTransition(opacity: anim, child: child),
+            child: Text(
+              isFollowing ? 'フォロー中' : 'フォロー',
+              key: ValueKey(isFollowing),
+            ),
+          ),
+          if (busy) ...[
+            const SizedBox(width: 8),
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -303,7 +459,9 @@ String _absUrl(String? path, String base) {
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
 
   final fixedBase = _fixLocalhost(base);
-  return '${_trimSlash(fixedBase)}$path';
+  // 余分な // を吸収してから連結
+  final p = '/${path.replaceFirst(RegExp(r"^/+"), "")}';
+  return '${_trimSlash(fixedBase)}$p';
 }
 
 String _trimSlash(String s) => s.endsWith('/') ? s.substring(0, s.length - 1) : s;
