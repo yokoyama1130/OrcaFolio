@@ -92,7 +92,6 @@ class _ProfilePageState extends State<ProfilePage> {
     return p;
   }
 
-
   @override
   void initState() {
     super.initState();
@@ -431,15 +430,15 @@ class _ProfilePageState extends State<ProfilePage> {
                 (p) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: PortfolioCard(
-                    portfolioId: p.id,                    // ★ 追加
-                    apiBaseUrl: widget.apiBaseUrl,  
+                    portfolioId: p.id,
+                    authorUserId: res.user.id,                 // ★ 投稿者IDを渡す（フォロー用）
+                    apiBaseUrl: widget.apiBaseUrl,
                     username: user.name,
                     title: p.title,
-                    // ← ここで絶対URLに補正してから渡す！
-                    imageUrl: _absUrl(p.imageUrl),
+                    imageUrl: _absUrl(p.imageUrl),             // 相対→絶対に補正
                     likes: p.likes,
-                    initiallyLiked: false,
-                    initiallyFollowed: false,
+                    initiallyLiked: (p.likedByMe),    // ★ サーバが返せばその値、無ければfalse
+                    initiallyFollowed: (p.isFollowedByMe), // ★ 同上
                   ),
                 ),
               ),

@@ -1,3 +1,4 @@
+// lib/widgets/portfolio_card.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -5,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class PortfolioCard extends StatefulWidget {
   final int portfolioId;
+  final int authorUserId;          // ★ 追加: 投稿者ユーザーID（フォロー対象）
   final String apiBaseUrl;
   final String username;
   final String title;
@@ -16,6 +18,7 @@ class PortfolioCard extends StatefulWidget {
   const PortfolioCard({
     super.key,
     required this.portfolioId,
+    required this.authorUserId,    // ★ 追加
     required this.apiBaseUrl,
     required this.username,
     required this.title,
@@ -35,11 +38,10 @@ class _PortfolioCardState extends State<PortfolioCard> {
   late bool _isLiked;
   late bool _isFollowed;
   late int _likeCount;
-
-  // localhost→127.0.0.1 補正済みベース
   late final Uri _normalizedBase;
 
-  bool _liking = false; // 二度押し防止
+  bool _liking = false;
+  bool _following = false;
 
   @override
   void initState() {
@@ -68,54 +70,78 @@ class _PortfolioCardState extends State<PortfolioCard> {
 
     try {
       final token = await _storage.read(key: 'jwt');
-      if (token == null || token.isEmpty) {
-        throw Exception('ログインが必要です（トークンなし）');
-      }
+      if (token == null || token.isEmpty) throw Exception('ログインが必要です（トークンなし）');
 
       final uri = _normalizedBase.replace(path: '/api/likes/toggle.json');
       final res = await http
-          .post(
-            uri,
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-            body: {'portfolio_id': '${widget.portfolioId}'},
-          )
+          .post(uri, headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          }, body: {
+            'portfolio_id': '${widget.portfolioId}',
+          })
           .timeout(const Duration(seconds: 15));
 
       if (res.statusCode != 200) {
         throw Exception('HTTP ${res.statusCode}: ${res.body}');
       }
-      // サーバ側で likeCount を返してるので任意で同期
-      // final map = jsonDecode(res.body) as Map<String, dynamic>;
-      // if (map['likeCount'] is num) {
-      //   setState(() => _likeCount = (map['likeCount'] as num).toInt());
-      // }
-    } on TimeoutException catch (_) {
-      _rollbackLike(prevLiked, prevCount, 'タイムアウトしました');
+    } on TimeoutException {
+      _rollback(prevLiked, prevCount, null, null, 'タイムアウトしました');
     } catch (e) {
-      _rollbackLike(prevLiked, prevCount, 'いいねに失敗しました: $e');
+      _rollback(prevLiked, prevCount, null, null, 'いいねに失敗しました: $e');
     } finally {
       _liking = false;
     }
   }
 
-  void _rollbackLike(bool prevLiked, int prevCount, String message) {
-    if (!mounted) return;
-    setState(() {
-      _isLiked = prevLiked;
-      _likeCount = prevCount;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+  Future<void> _toggleFollow() async {
+    if (_following) return;
+    _following = true;
+
+    final prevFollow = _isFollowed;
+
+    // 楽観更新
+    setState(() => _isFollowed = !_isFollowed);
+
+    try {
+      final token = await _storage.read(key: 'jwt');
+      if (token == null || token.isEmpty) throw Exception('ログインが必要です（トークンなし）');
+
+      final uri = _normalizedBase.replace(path: '/api/follows/toggle.json');
+      final res = await http
+          .post(uri, headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          }, body: {
+            'target_user_id': '${widget.authorUserId}', // ← 投稿者をフォロー
+          })
+          .timeout(const Duration(seconds: 15));
+
+      if (res.statusCode != 200) {
+        throw Exception('HTTP ${res.statusCode}: ${res.body}');
+      }
+    } on TimeoutException {
+      _rollback(null, null, prevFollow, null, 'タイムアウトしました');
+    } catch (e) {
+      _rollback(null, null, prevFollow, null, 'フォローに失敗しました: $e');
+    } finally {
+      _following = false;
+    }
   }
 
-  void _toggleFollow() {
-    // まだAPI未接続ならUIだけ
-    setState(() => _isFollowed = !_isFollowed);
-    // TODO: /api/follows/toggle を作ったらここでPOST
+  void _rollback(bool? prevLiked, int? prevCount, bool? prevFollow, int? _,
+      String message) {
+    if (!mounted) return;
+    setState(() {
+      if (prevLiked != null && prevCount != null) {
+        _isLiked = prevLiked;
+        _likeCount = prevCount;
+      }
+      if (prevFollow != null) {
+        _isFollowed = prevFollow;
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -139,13 +165,10 @@ class _PortfolioCardState extends State<PortfolioCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // サムネ（16:9）
             AspectRatio(
               aspectRatio: 16 / 9,
               child: _NetworkThumb(url: widget.imageUrl),
             ),
-
-            // 情報欄
             Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
@@ -155,10 +178,8 @@ class _PortfolioCardState extends State<PortfolioCard> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        '@${widget.username}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                      Text('@${widget.username}',
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
                       TextButton.icon(
                         onPressed: _toggleFollow,
                         icon: Icon(
@@ -184,15 +205,11 @@ class _PortfolioCardState extends State<PortfolioCard> {
                     ],
                   ),
                   const SizedBox(height: 6),
-
-                  // タイトル
                   Text(
                     widget.title,
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 10),
-
-                  // いいね
                   Row(
                     children: [
                       IconButton(
@@ -229,7 +246,6 @@ class _NetworkThumb extends StatelessWidget {
       alignment: Alignment.center,
       child: const Icon(Icons.image, size: 40),
     );
-
     final error = Container(
       width: double.infinity,
       height: double.infinity,
@@ -258,7 +274,7 @@ class _NetworkThumb extends StatelessWidget {
           );
         }
         return placeholder;
-    },
+      },
       errorBuilder: (_, __, ___) => error,
     );
   }

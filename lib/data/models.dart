@@ -86,12 +86,18 @@ class PortfolioItem {
   final int likes;
   final String? created;
 
+  /// 追加: いいね／フォローの初期状態（無い場合は false）
+  final bool likedByMe;
+  final bool isFollowedByMe;
+
   const PortfolioItem({
     required this.id,
     required this.title,
     required this.imageUrl,
     required this.likes,
     required this.created,
+    this.likedByMe = false,
+    this.isFollowedByMe = false,
   });
 
   factory PortfolioItem.fromJson(Map<String, dynamic> json) {

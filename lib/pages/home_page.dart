@@ -138,6 +138,8 @@ class _HomePageState extends State<HomePage> {
 
                 final id   = (p['id'] as num).toInt();
                 final name = (user['name'] ?? 'User') as String;
+                final authorUserId = (user['id'] is num) ? (user['id'] as num).toInt() : 0; // ★追加
+                final followed = (p['is_followed_by_me'] ?? false) as bool;                 // ★追加
 
                 final rawImg = (p['thumbnail'] ??
                                 p['imageUrl'] ??
@@ -150,13 +152,15 @@ class _HomePageState extends State<HomePage> {
 
                 return PortfolioCard(
                   portfolioId: id,
+                  authorUserId: authorUserId,
                   apiBaseUrl: widget.apiBaseUrl,
                   username: name,
                   title: (p['title'] ?? '') as String,
                   imageUrl: imgUrl.isEmpty ? 'https://picsum.photos/400/250' : imgUrl,
                   likes: likes,
                   initiallyLiked: liked,
-                  initiallyFollowed: false,
+                  // initiallyFollowed: false,
+                  initiallyFollowed: followed,
                 );
               },
             );

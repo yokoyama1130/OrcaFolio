@@ -204,31 +204,34 @@ class _SearchPageState extends State<SearchPage> with TickerProviderStateMixin {
                               ? Map<String, dynamic>.from(p['user'] as Map)
                               : const <String, dynamic>{};
 
-                          final id = ((p['id'] ?? p['portfolio_id']) as num).toInt();
-                          final title = (p['title'] ?? '') as String;
-                          final likes =
-                              ((p['like_count'] ?? p['likes'] ?? 0) as num).toInt();
-                          final liked = (p['liked_by_me'] ?? false) as bool;
+                          final id     = ((p['id'] ?? p['portfolio_id']) as num).toInt();
+                          final title  = (p['title'] ?? '') as String;
+                          final likes  = ((p['like_count'] ?? p['likes'] ?? 0) as num).toInt();
+                          final liked  = (p['liked_by_me'] ?? false) as bool;
+                          final followed = (p['is_followed_by_me'] ?? false) as bool;
 
-                          final rawImg = (p['thumbnail'] ??
-                                  p['imageUrl'] ??
-                                  p['image_url'] ??
-                                  p['img']) as String?;
-                          final imgUrl = _absUrl(rawImg,
-                              fallback: 'https://picsum.photos/400/250');
+                          // ★ 投稿者IDを non-null int にする
+                          final dynamic uidRaw = user['id'] ?? p['author_user_id'];
+                          final int authorId = (uidRaw is num) ? uidRaw.toInt() : 0;
+
+                          final rawImg = (p['thumbnail'] ?? p['imageUrl'] ?? p['image_url'] ?? p['img']) as String?;
+                          final imgUrl = _absUrl(rawImg, fallback: 'https://picsum.photos/400/250');
 
                           return PortfolioCard(
                             portfolioId: id,
+                            authorUserId: authorId, // ★ ここが int
                             apiBaseUrl: widget.apiBaseUrl,
                             username: (user['name'] ?? 'User') as String,
                             title: title,
                             imageUrl: imgUrl,
                             likes: likes,
                             initiallyLiked: liked,
-                            initiallyFollowed: false,
+                            initiallyFollowed: followed,
                           );
+
                         },
                       ),
+
 
                 // ---- ユーザー ----
                 _users.isEmpty

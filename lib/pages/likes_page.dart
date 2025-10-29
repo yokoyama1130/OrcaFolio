@@ -232,6 +232,8 @@ class _LikesPageState extends State<LikesPage> {
                             final id    = (p['id'] as num).toInt();
                             final title = (p['title'] ?? '').toString();
                             final name  = (user['name'] ?? 'User').toString();
+                            final authorUserId = (user['id'] is num) ? (user['id'] as num).toInt() : 0; // ★追加
+                            final followed = (p['is_followed_by_me'] ?? false) as bool;                 // ★追加
 
                             final imgUrl = (p['__thumb__'] as String?) ?? '';
                             final likes  = ((p['like_count'] ?? p['likes'] ?? 0) as num).toInt();
@@ -239,13 +241,15 @@ class _LikesPageState extends State<LikesPage> {
                             // いいね一覧は自分が「いいね」済みなので true
                             return PortfolioCard(
                               portfolioId: id,
+                              authorUserId: authorUserId,   
                               apiBaseUrl: widget.apiBaseUrl,
                               username: name,
                               title: title,
                               imageUrl: imgUrl.isEmpty ? 'https://picsum.photos/400/250' : imgUrl,
                               likes: likes,
                               initiallyLiked: true,
-                              initiallyFollowed: false,
+                              // initiallyFollowed: false,
+                              initiallyFollowed: followed,
                             );
                           },
                         ),
