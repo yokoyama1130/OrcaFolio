@@ -7,8 +7,8 @@ import 'chat_page.dart';
 class DMListPage extends StatefulWidget {
   const DMListPage({
     super.key,
-    required this.apiBaseUrl,   // ← 必須に
-    required this.token,        // ← 必須に（Authorization: Bearer 用）
+    required this.apiBaseUrl, // 必須
+    required this.token,      // 必須（Authorization: Bearer）
   });
 
   final String apiBaseUrl;
@@ -57,6 +57,7 @@ class _DMListPageState extends State<DMListPage> {
     return '${b.toString()}$path';
   }
 
+  /// APIから会話一覧を取得
   Future<void> _fetchDMList() async {
     setState(() {
       _loading = true;
@@ -74,11 +75,10 @@ class _DMListPageState extends State<DMListPage> {
           .get(uri, headers: _authHeaders)
           .timeout(const Duration(seconds: 20));
 
-      // サーバが Cookie 認証のみ対応の場合は 401 になりがち（モバイルはブラウザCookie共有しない）
       if (res.statusCode == 401) {
         setState(() {
           _items = [];
-          _error = 'ログインが必要です（モバイルはブラウザCookieを共有しないため、アプリ側からのJWT等が必要です）';
+          _error = 'ログインが必要です（ブラウザCookieは共有されないため、アプリ側でのJWTが必要です）';
         });
         return;
       }
@@ -119,6 +119,24 @@ class _DMListPageState extends State<DMListPage> {
     _fetchDMList();
   }
 
+  /// last_message / last_time をいい感じに取り出す
+  /// - last_message が String: そのまま本文、last_time を使う
+  /// - last_message が Map: {content, created} を優先し、無ければ last_time を使う
+  (String text, String time) _extractLast(Map<String, dynamic> conv) {
+    final lm = conv['last_message'] ?? conv['lastMessage'];
+    final lt = (conv['last_time'] ?? conv['lastTime'] ?? '').toString();
+
+    if (lm is Map) {
+      final text = (lm['content'] ?? lm['body'] ?? '').toString();
+      final time = (lm['created'] ?? lt).toString();
+      return (text, time);
+    } else if (lm is String) {
+      return (lm, lt);
+    } else {
+      return ('', lt);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final noToken = widget.token.isEmpty;
@@ -155,7 +173,7 @@ class _DMListPageState extends State<DMListPage> {
             child: RefreshIndicator(
               onRefresh: _fetchDMList,
               child: (_items.isEmpty && _error.isEmpty)
-                  ? ListView( // RefreshIndicator用に空でもスクロール領域を
+                  ? ListView( // RefreshIndicator用に空でもスクロール領域を確保
                       children: const [
                         SizedBox(height: 160),
                         Center(child: Text('メッセージはまだありません')),
@@ -167,38 +185,31 @@ class _DMListPageState extends State<DMListPage> {
                       itemBuilder: (context, index) {
                         final conv = _items[index];
 
-                        // サーバー側のキーの揺れを吸収
+                        // 会話ID（複数キーに対応）
                         final conversationId =
                             ((conv['conversation_id'] ??
                                       conv['id'] ??
                                       conv['conversationId']) as num)
                                 .toInt();
 
+                        // 相手名
                         final partnerName = (conv['partner_name'] ??
                                 conv['partner']?['name'] ??
                                 '???') as String;
 
+                        // 相手アイコンURL正規化（icons/xxx.png → /img/icons/xxx.png → 絶対URL）
                         final partnerIconRaw = (conv['partner_icon_url'] ??
                             conv['partner']?['icon_url'] ??
                             conv['partner']?['icon_path']) as String?;
 
-                        // 'icons/xxx.png' → '/img/icons/xxx.png' に寄せる
-                        final iconPath = (partnerIconRaw != null &&
-                                partnerIconRaw.startsWith('icons/'))
+                        final iconPath = (partnerIconRaw != null && partnerIconRaw.startsWith('icons/'))
                             ? '/img/$partnerIconRaw'
                             : partnerIconRaw;
 
                         final partnerIcon = _absUrl(iconPath);
 
-                        final lastMessage =
-                            (conv['last_message'] ??
-                                    conv['lastMessage'] ??
-                                    '') as String;
-
-                        final lastTime =
-                            (conv['last_time'] ??
-                                    conv['lastTime'] ??
-                                    '') as String;
+                        // 最後のメッセージ＆時刻を抽出（MapでもStringでもOK）
+                        final (lastMessageText, lastMessageTime) = _extractLast(conv);
 
                         return ListTile(
                           leading: CircleAvatar(
@@ -215,14 +226,14 @@ class _DMListPageState extends State<DMListPage> {
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           subtitle: Text(
-                            lastMessage.isEmpty
+                            lastMessageText.isEmpty
                                 ? '(まだメッセージがありません)'
-                                : lastMessage,
+                                : lastMessageText,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           trailing: Text(
-                            lastTime,
+                            lastMessageTime,
                             style: const TextStyle(color: Colors.grey),
                           ),
                           onTap: () {
