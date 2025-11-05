@@ -244,8 +244,11 @@ class PortfolioDetailPage extends StatelessWidget {
                           }),
                         ),
                       );
+
+                      // use_build_context_synchronously 対策
+                      if (!context.mounted) return;
+
                       if (ok == true) {
-                        // ignore: use_build_context_synchronously
                         Navigator.pushReplacement(
                           context,
                           PageRouteBuilder(
@@ -272,8 +275,11 @@ class PortfolioDetailPage extends StatelessWidget {
                           }),
                         ),
                       );
+
+                      // use_build_context_synchronously 対策
+                      if (!context.mounted) return;
+
                       if (ok == true) {
-                        // ignore: use_build_context_synchronously
                         Navigator.pop(context, true);
                       }
                     }
