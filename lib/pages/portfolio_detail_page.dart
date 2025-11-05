@@ -2,14 +2,16 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'portfolio_edit_page.dart';
+import 'portfolio_delete_page.dart';
+
 class PortfolioDetailPage extends StatelessWidget {
   const PortfolioDetailPage({super.key});
 
-  // ---------------- URL 正規化（/uploads を正とする） ----------------
+  // ---------------- helpers ----------------
   String _absUrl(String base, String? input) {
     if (input == null || input.isEmpty) return '';
     final trimmedBase = base.replaceAll(RegExp(r'/$'), '');
-
     final baseUri = Uri.parse(trimmedBase);
     final normalizedBase =
         baseUri.host == 'localhost' ? baseUri.replace(host: '127.0.0.1') : baseUri;
@@ -28,27 +30,63 @@ class PortfolioDetailPage extends StatelessWidget {
 
   String _normalizeUploadsPath(String path) {
     var p = path;
-    p = p.replaceFirst(RegExp(r'^//+'), '/');              // // → /
-    p = p.replaceFirst(RegExp(r'^/img/+img/'), '/img/');   // /img/img → /img
-    p = p.replaceFirst('/img//uploads/', '/img/uploads/'); // /img//uploads → /img/uploads
+    p = p.replaceFirst(RegExp(r'^//+'), '/');
+    p = p.replaceFirst(RegExp(r'^/img/+img/'), '/img/');
+    p = p.replaceFirst('/img//uploads/', '/img/uploads/');
     if (p.startsWith('/img/uploads/')) {
-      p = p.replaceFirst('/img/uploads/', '/uploads/');    // /img/uploads → /uploads に寄せる
+      p = p.replaceFirst('/img/uploads/', '/uploads/');
     }
     return p;
+  }
+
+  Map<String, String> _authHeaders(String? token) {
+    final h = <String, String>{
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    };
+    if (token != null && token.isNotEmpty) {
+      h['Authorization'] = 'Bearer $token';
+    }
+    return h;
+  }
+
+  // 真偽値を“ゆるく”解釈
+  bool _truthy(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      return s == 'true' || s == '1' || s == 'yes' || s == 'y';
+    }
+    return false;
+  }
+
+  // 任意の値を int? に
+  int? _toIntOrNull(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) {
+      final s = v.trim();
+      if (s.isEmpty) return null;
+      final n = int.tryParse(s);
+      return n;
+    }
+    return null;
   }
 
   // ---------------- API ----------------
   Future<Map<String, dynamic>> _fetchDetail({
     required String baseUrl,
     required int id,
+    String? token,
   }) async {
     final base = baseUrl.replaceAll(RegExp(r'/$'), '');
     final uri = Uri.parse('$base/api/portfolios/view/$id.json');
 
-    final res = await http.get(uri).timeout(const Duration(seconds: 20));
+    final res = await http.get(uri, headers: _authHeaders(token)).timeout(const Duration(seconds: 20));
 
     if (res.statusCode != 200) {
-      // ← ここを強化：本文も一緒に投げる
       throw Exception('Failed: ${res.statusCode} - ${res.body}');
     }
 
@@ -65,7 +103,7 @@ class PortfolioDetailPage extends StatelessWidget {
     throw Exception(map['message']?.toString() ?? 'Invalid response');
   }
 
-  // ---------------- UI ヘルパ ----------------
+  // ---------------- UI ----------------
   String _strOf(Map<String, dynamic> m, String key) {
     final v = m[key];
     if (v == null) return '';
@@ -80,8 +118,7 @@ class PortfolioDetailPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text(body, style: const TextStyle(height: 1.6)),
         ],
@@ -94,7 +131,10 @@ class PortfolioDetailPage extends StatelessWidget {
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
 
     final id = (args?['id'] as num?)?.toInt();
-    final apiBaseUrl = (args?['apiBaseUrl'] as String?) ?? 'http://127.0.0.1:8765'; // 実機はMacのIP
+    final apiBaseUrl = (args?['apiBaseUrl'] as String?) ?? 'http://127.0.0.1:8765';
+    final token = args?['token'] as String?;
+    final currentUserId = _toIntOrNull(args?['currentUserId']);
+    final debugBanner = args?['debug'] == true; // ← true でデバッグ情報表示
 
     if (id == null) {
       return const Scaffold(
@@ -103,7 +143,7 @@ class PortfolioDetailPage extends StatelessWidget {
     }
 
     return FutureBuilder<Map<String, dynamic>>(
-      future: _fetchDetail(baseUrl: apiBaseUrl, id: id),
+      future: _fetchDetail(baseUrl: apiBaseUrl, id: id, token: token),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -130,14 +170,20 @@ class PortfolioDetailPage extends StatelessWidget {
             ? _strOf(user, 'name')
             : (_strOf(p, 'author_name').isNotEmpty ? _strOf(p, 'author_name') : 'Unknown User');
 
+        // ここを“ゆるく”解釈
+        final editableFromApi = _truthy(p['editable']);
+        final authorId = _toIntOrNull(user['id']);
+        final userIdField = _toIntOrNull(p['user_id']);
+
+        final isOwner = editableFromApi ||
+            (currentUserId != null && (authorId == currentUserId || userIdField == currentUserId));
+
         final likes = int.tryParse(_strOf(p, 'like_count')) ??
                       int.tryParse(_strOf(p, 'likes')) ?? 0;
 
-        // 画像URL（thumbnail / imageUrl / image_url / img どれでも）
         final rawImage = p['thumbnail'] ?? p['imageUrl'] ?? p['image_url'] ?? p['img'];
         final imageUrl = _absUrl(apiBaseUrl, rawImage as String?);
 
-        // カテゴリスラッグが来るなら拾う（なくてもOK）
         final category = (p['category'] ?? const {}) as Map<String, dynamic>;
         final slug     = _strOf(category, 'slug');
 
@@ -162,24 +208,83 @@ class PortfolioDetailPage extends StatelessWidget {
         final experimentSummary  = _strOf(p, 'experiment_summary');
 
         // PDF
-        final drawingPdfPath     = _strOf(p, 'drawing_pdf_path'); // 例: files/portfolios/xx/p-..pdf
-        final supplementPdfRaw   = p['supplement_pdf_paths'];
+        final drawingPdfPath     = _strOf(p, 'drawing_pdf_path');
+        final suppRaw            = p['supplement_pdf_paths'];
         final List<String> supplementPdfs = (() {
-          if (supplementPdfRaw is String && supplementPdfRaw.trim().isNotEmpty) {
+          if (suppRaw is List) return suppRaw.map((e) => e.toString()).toList();
+          if (suppRaw is String && suppRaw.trim().isNotEmpty) {
             try {
-              final decoded = json.decode(supplementPdfRaw);
-              if (decoded is List) {
-                return decoded.map((e) => e.toString()).toList();
-              }
+              final decoded = json.decode(suppRaw);
+              if (decoded is List) return decoded.map((e) => e.toString()).toList();
             } catch (_) {}
-          } else if (supplementPdfRaw is List) {
-            return supplementPdfRaw.map((e) => e.toString()).toList();
           }
           return <String>[];
         })();
 
         return Scaffold(
-          appBar: AppBar(title: Text(title.isEmpty ? 'Portfolio' : title)),
+          appBar: AppBar(
+            title: Text(title.isEmpty ? 'Portfolio' : title),
+            actions: [
+              if (isOwner)
+                PopupMenuButton<String>(
+                  onSelected: (v) async {
+                    if (v == 'edit') {
+                      final ok = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const PortfolioEditPage(),
+                          settings: RouteSettings(arguments: {
+                            'id': id,
+                            'apiBaseUrl': apiBaseUrl,
+                            'token': token,
+                            'current': {
+                              'title': title,
+                              'description': desc,
+                            },
+                          }),
+                        ),
+                      );
+                      if (ok == true) {
+                        // ignore: use_build_context_synchronously
+                        Navigator.pushReplacement(
+                          context,
+                          PageRouteBuilder(
+                            pageBuilder: (_, __, ___) => const PortfolioDetailPage(),
+                            settings: RouteSettings(arguments: {
+                              'id': id,
+                              'apiBaseUrl': apiBaseUrl,
+                              'token': token,
+                              'currentUserId': currentUserId,
+                              'debug': debugBanner,
+                            }),
+                          ),
+                        );
+                      }
+                    } else if (v == 'delete') {
+                      final ok = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const PortfolioDeletePage(),
+                          settings: RouteSettings(arguments: {
+                            'id': id,
+                            'apiBaseUrl': apiBaseUrl,
+                            'token': token,
+                          }),
+                        ),
+                      );
+                      if (ok == true) {
+                        // ignore: use_build_context_synchronously
+                        Navigator.pop(context, true);
+                      }
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'edit', child: Text('編集')),
+                    PopupMenuItem(value: 'delete', child: Text('削除')),
+                  ],
+                ),
+            ],
+          ),
           body: SafeArea(
             child: SingleChildScrollView(
               child: Padding(
@@ -187,15 +292,32 @@ class PortfolioDetailPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (debugBanner)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          border: Border.all(color: Colors.amber),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'DEBUG  editable=${p['editable']} '
+                          '→ editableFromApi=$editableFromApi, '
+                          'authorId=$authorId, user_id=$userIdField, '
+                          'currentUserId=$currentUserId, isOwner=$isOwner',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+
                     // サムネ（16:9）
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: AspectRatio(
                         aspectRatio: 16 / 9,
                         child: Image.network(
-                          imageUrl.isEmpty
-                              ? 'https://picsum.photos/600/338'
-                              : imageUrl,
+                          imageUrl.isEmpty ? 'https://picsum.photos/600/338' : imageUrl,
                           fit: BoxFit.cover,
                           loadingBuilder: (context, child, progress) {
                             if (progress == null) return child;
@@ -225,7 +347,7 @@ class PortfolioDetailPage extends StatelessWidget {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        const Icon(Icons.favorite, color: Colors.redAccent),
+                        const Icon(Icons.favorite),
                         const SizedBox(width: 4),
                         Text('$likes likes'),
                         if (slug.isNotEmpty) ...[
@@ -251,7 +373,12 @@ class PortfolioDetailPage extends StatelessWidget {
                           children: [
                             const Icon(Icons.link, size: 18),
                             const SizedBox(width: 6),
-                            Expanded(child: Text(designUrl, style: const TextStyle(decoration: TextDecoration.underline))),
+                            Expanded(
+                              child: Text(
+                                designUrl,
+                                style: const TextStyle(decoration: TextDecoration.underline),
+                              ),
+                            ),
                           ],
                         ),
                       ),
