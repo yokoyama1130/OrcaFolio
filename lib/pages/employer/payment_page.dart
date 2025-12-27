@@ -16,7 +16,7 @@ class _PaymentPageState extends State<PaymentPage> {
 
   void _confirm() {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('「$_plan」プランに変更しました（ダミー）')),
+      SnackBar(content: Text('「$_plan」プランに変更しました')),
     );
     Navigator.pop(context);
   }
