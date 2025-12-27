@@ -77,7 +77,8 @@ class _CalcraftAppState extends State<CalcraftApp> {
     final token = _jwt ?? '';
 
     return [
-      // Home はダミーでもOK。API使うようにしているなら apiBaseUrl を渡しても良い
+      // 後でDBからデータを撮ってきてグラフとか出すように修正する
+      //API使うようにしているなら apiBaseUrl を渡しても良い
       const HomePage(),
 
       // 🔎 検索ページにもベースURLを明示
